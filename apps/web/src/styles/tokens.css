@@ -1,0 +1,26 @@
+:root {
+  font-family: 'Segoe UI', 'Aptos', sans-serif;
+  color: #25252c;
+  background: #f7f7f9;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --ink: #25252c;
+  --muted: #85858e;
+  --quiet: #a5a5ad;
+  --border: #e9e9ed;
+  --surface: #fff;
+  --canvas: #f7f7f9;
+  --accent: #7364dc;
+  --accent-soft: #f0effb;
+  --green: #4c9c79;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --motion-fast: 140ms;
+  --motion-panel: 210ms;
+  --ease: cubic-bezier(.2,.7,.2,1);
+}

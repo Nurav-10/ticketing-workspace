@@ -1,0 +1,8 @@
+* { box-sizing: border-box; }
+html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
+body { min-height: 100vh; }
+button { color: inherit; font: inherit; }
+button:focus-visible { outline: 2px solid #8073e4; outline-offset: 3px; }
+button:disabled { cursor: not-allowed; }
+svg { width: 18px; height: 18px; }
+.app-shell { display: flex; min-height: 100vh; background: var(--canvas); }
