@@ -62,7 +62,7 @@ Phase numbers express dependencies rather than estimates. The proposed beta span
 | [0. Research and decisions](plans/00-research.md) | Evidence, product scope and unresolved decisions | None |
 | [1. Foundations and identity](plans/01-foundations.md) | Deployable skeleton, auth, workspaces and isolation | 0 |
 | [2. Design system and shell](plans/02-design-system.md) | Original visual language, accessible shell and motion | 1 |
-| [3. Issues vertical slice](plans/03-issues.md) | Create, read, edit and transition real issues | 1–2 |
+| [3. Issues vertical slice](plans/03-issues.md) · [implementation blueprint](plans/03-implementation-blueprint.md) | Create, read, edit and transition real issues | 1–2 |
 | [4. Workflows and views](plans/04-workflows-views.md) | Statuses, lists, filters, board and search | 3 |
 | [5. Collaboration and sync](plans/05-collaboration.md) | Comments, activity, notifications and live updates | 3–4 |
 | [6. Projects and cycles](plans/06-projects-cycles.md) | Group issues and plan team cycles | 3–5 |
