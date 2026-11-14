@@ -110,15 +110,16 @@ Application-scoped queries and relational constraints are required regardless of
 
 ## 5. Proposed one-time workspace bootstrap
 
-There is no unrestricted workspace signup. The first workspace is created by an already authenticated, active principal with a currently verified provider identity, through an operator-enabled bootstrap path. The identity provider only proves who the requester is; it does not supply an owner role.
+There is no unrestricted workspace signup. The first workspace is created from a verified provider identity and an operator-held bootstrap secret. This avoids requiring an existing local account before the first account can be created. The identity provider proves identity; it does not supply an owner role.
 
 Proposed flow:
 
-1. A deployment/operator explicitly enables `WORKSPACE_BOOTSTRAP_ENABLED` for the initial setup window. The endpoint remains unavailable when this switch is false. The switch is server-side configuration and is never set from a request.
-2. An authenticated principal submits only workspace name and slug. The route ignores/rejects user IDs, role, owner, verified-email, and provider claims in the body. The `userId` is taken from the verified principal and rechecked as active in the database.
-3. In one database transaction, obtain a transaction-scoped PostgreSQL advisory lock for the singleton bootstrap key, verify that the bootstrap gate is enabled and no workspace exists, validate the principal's active account, create the workspace, and create its `owner` membership. Write the bootstrap audit event in the same transaction.
-4. Commit. A second concurrent bootstrap waits for the same lock, rechecks workspace existence, then returns a stable `409 bootstrap_already_completed`; it cannot create a second workspace or owner. The route can be disabled by configuration immediately after the first successful result. The database emptiness check remains authoritative even if the flag stays enabled by mistake.
-5. Once any workspace exists, no later account may claim initial-owner privileges. Additional users join through authorized invitations only.
+1. The operator explicitly configures the hash of a 32-byte random secret and the initial workspace name and slug. No default secret or request-provided workspace settings are accepted.
+2. A rate-limited, controlled setup flow verifies the provider identity and email. Only a server-derived secret hash is carried in the encrypted, single-use login transaction; the raw secret must not appear in URLs or logs.
+3. The bootstrap service checks the grant in constant time. In one database transaction, it obtains an advisory lock, verifies no workspace exists, and creates the internal user, provider identity, workspace and owner membership together.
+4. A concurrent attempt waits for the lock, rechecks workspace existence and fails without creating a second workspace. Once any workspace exists, additional users join through authorized invitations only.
+
+The internal service is drafted but the setup flow, rate limiting, audit event and provider integration are not yet wired or verified. Do not expose bootstrap publicly until these controls are complete.
 
 If the provider/session/database contract is not working, bootstrap is not available. A private operator SQL insert is not a substitute for the auditable bootstrap service; any emergency recovery must be a separately documented, reviewed operations procedure.
 
