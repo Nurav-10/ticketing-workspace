@@ -1,8 +1,8 @@
 # Ticketing system: product and delivery plan
 
-Status: planning draft · 14 November 2026
+Status: implementation underway · 14 November 2026
 
-The original plan.md was empty. This proposal is based on your brief: a Linear-inspired ticketing system with a polished interface, subtle animation and a strong backend. It does not describe an existing implementation.
+The original plan.md was empty. This plan is based on the brief: a Linear-inspired ticketing system with a polished interface, subtle animation and a strong backend. The initial Docker-based foundation and shell are implemented; identity, authorization and the product workflows remain incomplete.
 
 ## Problem and outcome
 
@@ -26,15 +26,15 @@ Use TypeScript across the stack, Bun workspaces for package management, and a mo
 | Area | Proposal | Why |
 | --- | --- | --- |
 | Web | React, Vite, TanStack Router and TanStack Query; CSS variables and accessible primitives | Explicit client routing and server-state management, with a reusable design system. |
-| API | Node.js LTS, Fastify and typed REST with OpenAPI | Clear, testable API boundaries and a compatible runtime. Bun manages packages. The REA runtime limitation observed during setup does not establish an application-runtime limitation; benchmark Bun separately if desired. |
-| Data | PostgreSQL with one typed SQL layer, such as Kysely | Transactions, constraints and explicit SQL support tenant isolation and concurrent edits. Choose the library in Phase 1. |
+| API | Node.js LTS, Express and typed REST with OpenAPI | Express is the selected transport; keep business services and authorization independent of the framework. Bun manages packages. |
+| Data | PostgreSQL with Prisma ORM and Prisma Migrate | Typed data access and versioned migrations, with database constraints and explicit transactional locking where Prisma's normal operations cannot express the required guarantee. |
 | Jobs | Transactional outbox in PostgreSQL and a separate worker | Durable async work without requiring Redis for the first release. Evaluate a maintained queue library before adoption. |
 | Live updates | Authenticated server-sent events (SSE), with HTTP writes | Server-to-client events fit the first release; reconnect and resync semantics must be explicit. |
 | Authentication | Managed identity provider behind an adapter and a secure application session cookie | Delegate password recovery and identity operations; select a provider after reviewing price, security, residency and portability. |
 | Files | Private S3-compatible object storage | Introduce with attachments after MVP; authorize every upload and download. |
-| Tooling | Strict TypeScript, migrations, CI, formatter/linter and reproducible local PostgreSQL | Pin versions, commit a lockfile and verify dependencies when implementation starts. Docker may run local infrastructure but is not required for the web client. |
+| Tooling | Strict TypeScript, migrations, CI, formatter/linter and reproducible local PostgreSQL | Pin versions, commit a lockfile and verify dependencies. Install project dependencies and run checks inside Docker. |
 
-These are proposals, not installed dependencies. Keep identity, workspaces, teams, issues, views, projects, cycles, activity and notifications as explicit application modules. Begin with one API and one worker; split services only when measurement justifies the cost.
+The current repository uses Bun workspaces, React, Fastify, PostgreSQL and a custom SQL migration runner. Express and Prisma are the selected target for the next backend migration; that migration is not complete yet. The remaining technologies are proposals until selected and verified. Keep identity, workspaces, teams, issues, views, projects, cycles, activity and notifications as explicit application modules. Begin with one API and one worker; split services only when measurement justifies the cost.
 
 ## Core contracts
 
@@ -55,7 +55,7 @@ Use the **CALM** application mode: quiet workspace navigation, compact readable 
 
 ## Delivery phases
 
-Phase numbers express dependencies rather than estimates. The proposed beta spans Phases 1–7; Phase 8 is post-launch. CI, accessibility and authorization checks start early and expand with each slice. The current execution breakdown is in the [Phase 1 implementation blueprint](plans/01-implementation-blueprint.md).
+Phase numbers express dependencies rather than estimates. The proposed beta spans Phases 1–7; Phase 8 is post-launch. CI, accessibility and authorization checks start early and expand with each slice. The active breakdowns are the [Phase 1 foundation blueprint](plans/01-implementation-blueprint.md), [Express and Prisma migration](plans/01-express-prisma-migration.md), [identity implementation](plans/01-identity-implementation.md), and [Phase 2 design-system blueprint](plans/02-implementation-blueprint.md).
 
 | Phase | Goal | Depends on |
 | --- | --- | --- |

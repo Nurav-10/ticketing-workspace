@@ -2,11 +2,13 @@
 
 Status: active execution plan · 14 November 2026. This expands [Phase 1](01-foundations.md) into reviewable slices. The user has required Docker for dependency installation and testing, local Git commits, and cohesive modules following SOLID principles.
 
+**Stack update:** Express and Prisma are now the selected backend direction. The framework and persistence details below describe the initial Fastify/SQL checkpoint; follow the [Express and Prisma migration blueprint](01-express-prisma-migration.md) for its replacement and preserve the same application and security boundaries.
+
 ## Objective and current state
 
 Build a containerized foundation for an internal, multi-workspace issue tracker. The first milestone provides a real application shell, a PostgreSQL schema and a small API with health/readiness and protected workspace/invitation seams. A real identity provider has not been selected, so the API must fail closed for protected requests and must not claim working sign-in, invitations or production readiness. Staging deployment, a verified identity provider, completed team policies and the full Phase 1 acceptance criteria remain future work until their dependencies are available.
 
-The workspace contains initial, unverified scaffolding. In particular, the current React app and Fastify application contain too much unrelated behavior in single files. Restructure them before treating them as an accepted baseline.
+The initial foundation was split into the modules below and committed as `e63178f`. On 14 November 2026, Docker checks passed for frozen dependency installation, audit, typechecking, builds, six API tests and six PostgreSQL integration tests; the development migration and service health checks also succeeded. The production startup guard correctly rejected the unconfigured identity adapter. A subsequent health-probe regression fix was committed as `c669eb9` after seven API tests and API typechecking passed in Docker. Desktop/mobile visual rendering and full Phase 1 acceptance remain unverified.
 
 ## Non-negotiable execution constraints
 
