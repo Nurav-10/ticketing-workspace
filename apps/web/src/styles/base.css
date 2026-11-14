@@ -2,7 +2,40 @@
 html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
 body { min-height: 100vh; }
 button { color: inherit; font: inherit; }
-button:focus-visible { outline: 2px solid #8073e4; outline-offset: 3px; }
 button:disabled { cursor: not-allowed; }
 svg { width: 18px; height: 18px; }
-.app-shell { display: flex; min-height: 100vh; background: var(--canvas); }
+.app-shell { display: flex; min-height: 100vh; background: var(--color-canvas); }
+
+.ui-button {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+.ui-button:not(:disabled):hover { background-color: var(--color-surface-hover); color: var(--color-text-primary); }
+.ui-button:not(:disabled):active { transform: translateY(1px); }
+.ui-button:disabled { cursor: not-allowed; }
+.ui-button--ghost { background: transparent; }
+.ui-button--subtle { border-color: var(--color-border); background: var(--color-surface-raised); }
+.ui-button--outline { border-color: var(--color-border); background: var(--color-surface); }
+.ui-button--small { min-height: 28px; padding: 0 var(--space-2); font-size: var(--font-size-caption); }
+.ui-button--medium { min-height: 32px; padding: 0 var(--space-2); font-size: var(--font-size-caption); }
+.ui-button--icon { width: 32px; min-height: 32px; padding: 0; }
+.ui-button--icon > svg { width: 16px; height: 16px; }
+
+.ui-state-badge { display: inline-flex; min-width: 0; align-items: center; gap: var(--space-2); }
+.ui-state-badge__dot { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--color-text-subtle); }
+.ui-state-badge[data-tone='warning'] .ui-state-badge__dot { background: var(--color-warning); box-shadow: 0 0 0 3px var(--color-warning-soft); }
+.ui-state-badge[data-tone='success'] .ui-state-badge__dot { background: var(--color-success); }
+.ui-state-badge[data-tone='danger'] .ui-state-badge__dot { background: var(--color-danger); }

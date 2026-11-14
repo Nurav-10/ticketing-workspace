@@ -1,5 +1,7 @@
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Icon } from '../ui/Icon'
+import { Button } from '../ui/Button'
+import { StateBadge } from '../ui/StateBadge'
 
 function WorkspaceMark() {
   return <span className="workspace-mark" aria-hidden="true"><i /><i /><i /></span>
@@ -11,7 +13,9 @@ export function Sidebar({ open, mobile, onClose }: SidebarProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
-    if (open) closeButtonRef.current?.focus()
+    if (!open) return
+    const frame = window.requestAnimationFrame(() => closeButtonRef.current?.focus())
+    return () => window.cancelAnimationFrame(frame)
   }, [open])
 
   function keepFocusInDrawer(event: ReactKeyboardEvent<HTMLElement>) {
@@ -42,7 +46,7 @@ export function Sidebar({ open, mobile, onClose }: SidebarProps) {
           <span className="workspace-name"><b id="workspace-heading">Workspace</b><small>Sign-in unavailable</small></span>
           <span className="switcher-chevron"><Icon name="chevron" /></span>
         </div>
-        <button ref={closeButtonRef} className="sidebar-close" aria-label="Close workspace navigation" onClick={onClose}><Icon name="close" /></button>
+        <Button ref={closeButtonRef} className="sidebar-close" size="icon" aria-label="Close workspace navigation" onClick={onClose}><Icon name="close" /></Button>
       </div>
 
       <div className="sidebar-content">
@@ -61,8 +65,8 @@ export function Sidebar({ open, mobile, onClose }: SidebarProps) {
       </div>
 
       <div className="sidebar-bottom">
-        <div className="access-card"><span className="access-card-dot" /><span><b>Workspace access unavailable</b><small>Sign-in is unavailable</small></span></div>
-        <div className="profile-row"><span className="profile-avatar" aria-hidden="true">·</span><span className="profile-copy"><b>Not signed in</b><small>Sign-in is unavailable</small></span><button className="icon-button disabled-icon" aria-label="Account options unavailable" disabled><Icon name="dots" /></button></div>
+        <StateBadge className="access-card" tone="warning"><span><b>Workspace access unavailable</b><small>Sign-in is unavailable</small></span></StateBadge>
+        <div className="profile-row"><span className="profile-avatar" aria-hidden="true">·</span><span className="profile-copy"><b>Not signed in</b><small>Sign-in is unavailable</small></span><Button className="icon-button disabled-icon" size="icon" aria-label="Account options unavailable" disabled><Icon name="dots" /></Button></div>
       </div>
     </aside>
   )
