@@ -1,0 +1,104 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id              String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  providerSubject String                 @unique(map: "users_provider_subject_key") @map("provider_subject")
+  email           String
+  emailVerifiedAt DateTime?              @map("email_verified_at") @db.Timestamptz(6)
+  displayName     String                 @map("display_name")
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime               @default(now()) @map("updated_at") @db.Timestamptz(6)
+  memberships     WorkspaceMembership[]
+  invitations     Invitation[]           @relation("InvitationInviter")
+
+  @@map("users")
+}
+
+model SchemaMigration {
+  name      String   @id
+  appliedAt DateTime @default(now()) @map("applied_at") @db.Timestamptz(6)
+
+  @@map("schema_migrations")
+}
+
+model Workspace {
+  id          String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  slug        String                 @unique(map: "workspaces_slug_key")
+  createdAt   DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime               @default(now()) @map("updated_at") @db.Timestamptz(6)
+  memberships WorkspaceMembership[]
+  teams       Team[]
+  invitations Invitation[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMembership {
+  workspaceId String   @map("workspace_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  role        String
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "workspace_memberships_workspace_id_fkey")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "workspace_memberships_user_id_fkey")
+  teams       TeamMembership[]
+
+  @@id([workspaceId, userId], map: "workspace_memberships_pkey")
+  @@unique([workspaceId, userId, role], map: "workspace_memberships_workspace_id_user_id_role_key")
+  @@map("workspace_memberships")
+}
+
+model Team {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String           @map("workspace_id") @db.Uuid
+  name        String
+  key         String
+  visibility  String           @default("workspace")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @default(now()) @map("updated_at") @db.Timestamptz(6)
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "teams_workspace_id_fkey")
+  memberships TeamMembership[]
+
+  @@unique([workspaceId, id], map: "teams_workspace_id_id_key")
+  @@unique([workspaceId, key], map: "teams_workspace_id_key_key")
+  @@map("teams")
+}
+
+model TeamMembership {
+  workspaceId String @map("workspace_id") @db.Uuid
+  teamId      String @map("team_id") @db.Uuid
+  userId      String @map("user_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  team        Team @relation(fields: [workspaceId, teamId], references: [workspaceId, id], onDelete: Cascade, map: "team_memberships_workspace_id_team_id_fkey")
+  membership  WorkspaceMembership @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade, map: "team_memberships_workspace_id_user_id_fkey")
+
+  @@id([teamId, userId], map: "team_memberships_pkey")
+  @@map("team_memberships")
+}
+
+model Invitation {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  email      String
+  role       String
+  tokenHash  Bytes    @unique(map: "invitations_token_hash_key") @map("token_hash") @db.ByteA
+  invitedBy  String   @map("invited_by") @db.Uuid
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+  redeemedAt DateTime? @map("redeemed_at") @db.Timestamptz(6)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "invitations_workspace_id_fkey")
+  inviter    User      @relation("InvitationInviter", fields: [invitedBy], references: [id], onDelete: NoAction, map: "invitations_invited_by_fkey")
+
+  @@map("invitations")
+}

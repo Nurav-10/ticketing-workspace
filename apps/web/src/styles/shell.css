@@ -7,6 +7,7 @@
 .workspace-mark i { display: block; width: 3.5px; border-radius: 4px; background: var(--color-accent); }
 .workspace-mark i:nth-child(1) { height: 8px; opacity: .62; }.workspace-mark i:nth-child(2) { height: 13px; }.workspace-mark i:nth-child(3) { height: 9px; opacity: .78; }
 .workspace-name { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }.workspace-name b { overflow: hidden; color: var(--color-text-primary); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }.workspace-name small { color: var(--color-text-muted); font-size: 12px; }
+.workspace-list { display: grid; gap: 3px; margin: -2px 0 12px; padding: 0 8px 0 27px; color: var(--color-text-secondary); list-style: none; font-size: 12px; }.workspace-list li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .switcher-chevron { color: var(--color-text-muted); display: grid; place-items: center; }.switcher-chevron svg { width: 15px; height: 15px; }
 .sidebar-close { display: none; }
 .sidebar-content { flex: 1; padding: 23px 11px 12px; }
@@ -26,6 +27,7 @@
 .access-card > span:last-child { display: flex; flex-direction: column; gap: 3px; }.access-card b { color: var(--color-text-secondary); font-size: 12px; font-weight: 600; }.access-card small { color: var(--color-text-muted); font-size: 12px; }
 .profile-row { display: flex; align-items: center; gap: 8px; padding: 13px 4px 1px; }.profile-avatar { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; background: var(--color-border-strong); color: var(--color-text-muted); font-size: 12px; }
 .profile-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }.profile-copy b { color: var(--color-text-secondary); font-size: 12px; font-weight: 550; }.profile-copy small { color: var(--color-text-muted); font-size: 12px; }
+.signin-link, .access-retry { display: inline-flex; width: fit-content; margin: 8px 0 0 37px; color: var(--color-accent-strong); font-size: 12px; text-decoration: none; }.signin-link:hover { text-decoration: underline; }.signout-button { flex: 0 0 auto; color: var(--color-text-secondary); font-size: 12px; }.access-error { margin: 7px 4px 0; color: var(--color-warning); font-size: 12px; line-height: 1.45; }
 
 /* Main pane and toolbar */
 .main-column { display: flex; min-width: 0; flex: 1; flex-direction: column; }

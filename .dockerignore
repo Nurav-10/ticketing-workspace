@@ -5,6 +5,7 @@
 **/node_modules
 **/dist
 **/coverage
+apps/api/src/generated/prisma
 .bun-tmp
 .bun-install
 *.log

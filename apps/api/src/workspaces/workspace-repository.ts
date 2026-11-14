@@ -1,6 +1,4 @@
-import type { QueryResultRow } from 'pg';
-
-export interface WorkspaceSummary extends QueryResultRow {
+export interface WorkspaceSummary {
   id: string;
   name: string;
   slug: string;

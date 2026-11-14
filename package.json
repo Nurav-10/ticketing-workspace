@@ -7,11 +7,12 @@
     "node": ">=24 <25"
   },
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
     "build": "bun run --filter '*' build",
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun run --filter @ticketing/api test"
+    "test": "bun run --filter '*' test"
   }
 }

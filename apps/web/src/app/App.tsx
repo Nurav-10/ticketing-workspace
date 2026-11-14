@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { Sidebar } from '../components/shell/Sidebar'
 import { Topbar } from '../components/shell/Topbar'
 import { IssueWorkspace } from '../features/workspace/IssueWorkspace'
+import { useWorkspaceAccess } from '../features/workspace/useWorkspaceAccess'
 
 export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const access = useWorkspaceAccess()
   const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 760px)').matches)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
   const restoreMenuFocusRef = useRef(false)
@@ -39,7 +41,7 @@ export function App() {
   return (
     <div className="app-shell">
       {sidebarOpen && isMobile && <div className="mobile-scrim" aria-hidden="true" onClick={closeSidebar} />}
-      <Sidebar open={sidebarOpen && isMobile} mobile={isMobile} onClose={closeSidebar} />
+      <Sidebar open={sidebarOpen && isMobile} mobile={isMobile} onClose={closeSidebar} auth={access.auth} workspaces={access.workspaces} items={access.items} signingOut={access.signingOut} signOutError={access.signOutError} onSignOut={() => void access.logout()} onRetry={access.refresh} />
       <main className="main-column" inert={sidebarOpen && isMobile ? true : undefined}>
         <Topbar
           sidebarOpen={sidebarOpen}

@@ -2,7 +2,9 @@
 
 A container-first foundation for a multi-workspace issue tracker. The product and phase plans are in [plan.md](plan.md); the active implementation breakdown is in [the Phase 1 blueprint](plans/01-implementation-blueprint.md).
 
-The current milestone is a foundation, not a finished ticketing product. A real identity provider has not been configured. Protected endpoints fail closed, and sign-in, account creation, team management and issue editing are not available yet.
+**Backend migration in progress:** the Express and Prisma implementation and the commands below have not yet passed their full Docker verification. Do not reset or delete an existing database volume to make migration commands work; see the [migration plan](plans/01-express-prisma-migration.md).
+
+The current milestone is a foundation, not a finished ticketing product. A real identity provider has not been configured. Protected endpoints fail closed until authentication is configured. Issue editing is not yet implemented.
 
 ## Requirements
 
@@ -14,6 +16,8 @@ Docker builds the Node/Bun application image and installs locked dependencies wi
 ## Start locally
 
 From this directory:
+
+The migration command below is for a fresh database. An existing database from the earlier SQL migration requires the explicit, guarded baseline procedure in the [API README](apps/api/README.md) before applying Prisma migrations. Do not run baseline or deploy commands against existing data without checking that procedure.
 
 ```powershell
 docker compose build
@@ -64,4 +68,4 @@ To update dependencies, generate the lockfile inside a temporary container, revi
 
 ## Security and scope
 
-The API's identity boundary is deliberately unconfigured and rejects protected operations. Production startup is blocked until a real authentication provider is integrated. Before deployment, select a provider and hosting environment; implement and validate session issuance, logout, revocation, invitation management and the complete role/team authorization policy. Development services and credentials are not a production deployment.
+The default identity boundary is unconfigured and rejects protected operations; production startup is blocked without configured authentication. OIDC sessions, invitation management, and role/team policies are implemented in progress and require Docker and staging verification. Provider credentials, a hosting environment, deployment access controls, and a retention policy are still needed. Development services and credentials are not a production deployment.

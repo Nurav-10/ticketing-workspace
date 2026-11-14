@@ -4,6 +4,10 @@ Status: active execution plan · 14 November 2026. This expands [Phase 1](01-fou
 
 **Stack update:** Express and Prisma are now the selected backend direction. The framework and persistence details below describe the initial Fastify/SQL checkpoint; follow the [Express and Prisma migration blueprint](01-express-prisma-migration.md) for its replacement and preserve the same application and security boundaries.
 
+**Current implementation note:** The Express/Prisma migration, hosted OIDC composition, workspace authorization, invitations, audit events, and related web integration are in progress in the working tree. Statements below about what the original checkpoint lacked are historical and do not establish the current behavior. The new work has not yet passed its Docker verification or dependency gate; Phase 1 and staging remain incomplete.
+
+**Docker verification in progress:** A clean frozen install and Prisma generation succeeded with OpenSSL in the image. Bun audit reported no vulnerabilities in 340 packages; the workspace typecheck, production builds, 104 API unit tests, and worker/contracts tests passed on their respective checked snapshots. The full isolated PostgreSQL integration suite passed all 39 cases after fixing concurrency handling and test-fixture isolation. Production startup correctly rejected missing identity-provider configuration. Browser testing, a real provider, staging, and a verified existing-database baseline are still outstanding; these results do not establish Phase 1 completion.
+
 ## Objective and current state
 
 Build a containerized foundation for an internal, multi-workspace issue tracker. The first milestone provides a real application shell, a PostgreSQL schema and a small API with health/readiness and protected workspace/invitation seams. A real identity provider has not been selected, so the API must fail closed for protected requests and must not claim working sign-in, invitations or production readiness. Staging deployment, a verified identity provider, completed team policies and the full Phase 1 acceptance criteria remain future work until their dependencies are available.

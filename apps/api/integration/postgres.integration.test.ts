@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { InvitationService } from '../src/invitations/invitation-service.js';
-import { PostgresInvitationRepository } from '../src/invitations/postgres-invitation-repository.js';
+import { PrismaInvitationRepository } from '../src/invitations/prisma-invitation-repository.js';
 import { ApiError } from '../src/shared/api-error.js';
 import { createInvitationSecret } from '../src/invitations/invitation-service.js';
-import { pool } from './test-database.js';
+import { pool, prisma, removeTestAuditEvents } from './test-database.js';
 
-const invitationService = new InvitationService(new PostgresInvitationRepository(pool));
+const invitationService = new InvitationService(new PrismaInvitationRepository(prisma));
 
 async function createUser(email: string, verified = true): Promise<string> {
   const id = randomUUID();
@@ -22,8 +22,16 @@ async function createUser(email: string, verified = true): Promise<string> {
 async function createWorkspace(ownerId: string): Promise<{ id: string; slug: string }> {
   const id = randomUUID();
   const slug = `it-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
-  await pool.query('INSERT INTO workspaces(id, name, slug) VALUES ($1, $2, $3)', [id, 'Integration workspace', slug]);
-  await pool.query('INSERT INTO workspace_memberships(workspace_id, user_id, role) VALUES ($1, $2, $3)', [id, ownerId, 'owner']);
+  const setup = await pool.connect();
+  try {
+    await setup.query('BEGIN');
+    await setup.query('INSERT INTO workspaces(id, name, slug) VALUES ($1, $2, $3)', [id, 'Integration workspace', slug]);
+    await setup.query('INSERT INTO workspace_memberships(workspace_id, user_id, role) VALUES ($1, $2, $3)', [id, ownerId, 'owner']);
+    await setup.query('COMMIT');
+  } catch (error) {
+    await setup.query('ROLLBACK');
+    throw error;
+  } finally { setup.release(); }
   return { id, slug };
 }
 
@@ -39,6 +47,7 @@ async function createInvitation(workspaceId: string, inviterId: string, email: s
 }
 
 async function cleanup(workspaceIds: string[], userIds: string[]): Promise<void> {
+  await removeTestAuditEvents(workspaceIds);
   if (workspaceIds.length) {
     await pool.query('DELETE FROM invitations WHERE workspace_id = ANY($1::uuid[]) OR invited_by = ANY($2::uuid[])', [workspaceIds, userIds]);
     await pool.query('DELETE FROM workspaces WHERE id = ANY($1::uuid[])', [workspaceIds]);
@@ -159,6 +168,30 @@ test('simultaneous redemption through separate database connections has one winn
   } finally { await cleanup(workspaces, users); }
 });
 
+test('simultaneous distinct invitations for one user cannot create duplicate membership', async () => {
+  const users: string[] = [];
+  const workspaces: string[] = [];
+  try {
+    const inviterId = await createUser(`inviter-${randomUUID()}@example.test`); users.push(inviterId);
+    const recipientId = await createUser(`recipient-${randomUUID()}@example.test`); users.push(recipientId);
+    const workspace = await createWorkspace(inviterId); workspaces.push(workspace.id);
+    const email = (await pool.query('SELECT email FROM users WHERE id = $1', [recipientId])).rows[0].email as string;
+    const invitationA = await createInvitation(workspace.id, inviterId, email);
+    const invitationB = await createInvitation(workspace.id, inviterId, email);
+
+    const outcomes = await Promise.allSettled([
+      invitationService.redeem({ userId: recipientId, sessionId: 'session-a' }, invitationA.token),
+      invitationService.redeem({ userId: recipientId, sessionId: 'session-b' }, invitationB.token)
+    ]);
+    assert.equal(outcomes.filter((result) => result.status === 'fulfilled').length, 1);
+    const rejected = outcomes.find((result) => result.status === 'rejected');
+    assert.ok(rejected && rejected.status === 'rejected' && rejected.reason instanceof ApiError);
+    assert.equal(rejected.reason.statusCode, 409);
+    const membership = await pool.query('SELECT count(*)::int AS count FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2', [workspace.id, recipientId]);
+    assert.equal(membership.rows[0]?.count, 1);
+  } finally { await cleanup(workspaces, users); }
+});
+
 test('unique workspace membership and owner constraints are enforced', async () => {
   const users: string[] = [];
   const workspaces: string[] = [];
@@ -177,4 +210,28 @@ test('unique workspace membership and owner constraints are enforced', async () 
   } finally { await cleanup(workspaces, users); }
 });
 
-test.after(async () => { await pool.end(); });
+test('moving the sole owner to another workspace cannot leave the source ownerless', async () => {
+  const users: string[] = [];
+  const workspaces: string[] = [];
+  try {
+    const ownerA = await createUser(`owner-a-${randomUUID()}@example.test`); users.push(ownerA);
+    const ownerB = await createUser(`owner-b-${randomUUID()}@example.test`); users.push(ownerB);
+    const workspaceA = await createWorkspace(ownerA); workspaces.push(workspaceA.id);
+    const workspaceB = await createWorkspace(ownerB); workspaces.push(workspaceB.id);
+    await assert.rejects(
+      () => pool.query(
+        `UPDATE workspace_memberships SET workspace_id = $1, role = 'member'
+         WHERE workspace_id = $2 AND user_id = $3`,
+        [workspaceB.id, workspaceA.id, ownerA],
+      ),
+      (error: { code?: string }) => error.code === '23514',
+    );
+    const original = await pool.query(
+      'SELECT role FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2',
+      [workspaceA.id, ownerA],
+    );
+    assert.equal(original.rows[0]?.role, 'owner');
+  } finally { await cleanup(workspaces, users); }
+});
+
+test.after(async () => { await prisma.$disconnect(); await pool.end(); });
