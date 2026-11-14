@@ -55,7 +55,7 @@ Use the **CALM** application mode: quiet workspace navigation, compact readable 
 
 ## Delivery phases
 
-Phase numbers express dependencies rather than estimates. The proposed beta spans Phases 1–7; Phase 8 is post-launch. CI, accessibility and authorization checks start early and expand with each slice. The active breakdowns are the [Phase 1 foundation blueprint](plans/01-implementation-blueprint.md), [Express and Prisma migration](plans/01-express-prisma-migration.md), [identity implementation](plans/01-identity-implementation.md), and [Phase 2 design-system blueprint](plans/02-implementation-blueprint.md).
+Phase numbers express dependencies rather than estimates. The proposed beta spans Phases 1–7; Phase 8 is post-launch. CI, accessibility and authorization checks start early and expand with each slice. The active breakdowns are the [Phase 1 foundation blueprint](plans/01-implementation-blueprint.md), [Express and Prisma migration](plans/01-express-prisma-migration.md), [identity implementation](plans/01-identity-implementation.md), [workspace authorization](plans/01-authorization-implementation.md), and [Phase 2 design-system blueprint](plans/02-implementation-blueprint.md).
 
 | Phase | Goal | Depends on |
 | --- | --- | --- |
