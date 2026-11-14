@@ -28,14 +28,15 @@ export async function buildApp({ config, authenticator, readinessProbe, workspac
   await app.register(cookie);
   app.decorateRequest('principal', null);
   app.addHook('onRequest', async (request, reply) => { reply.header('x-request-id', request.id); });
-  app.addHook('preHandler', async (request) => {
-    await authenticateAndCheckOrigin(request, authenticator, config.SESSION_COOKIE_NAME, config.PUBLIC_ORIGIN);
-  });
-
+  registerErrorHandler(app);
   registerHealthRoutes(app, readinessProbe);
   registerOpenApiRoute(app);
-  registerWorkspaceRoutes(app, workspaceService);
-  registerInvitationRoutes(app, invitationService);
-  registerErrorHandler(app);
+  await app.register(async (protectedRoutes) => {
+    protectedRoutes.addHook('preHandler', async (request) => {
+      await authenticateAndCheckOrigin(request, authenticator, config.SESSION_COOKIE_NAME, config.PUBLIC_ORIGIN);
+    });
+    registerWorkspaceRoutes(protectedRoutes, workspaceService);
+    registerInvitationRoutes(protectedRoutes, invitationService);
+  });
   return app;
 }

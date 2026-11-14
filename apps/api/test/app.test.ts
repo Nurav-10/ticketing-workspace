@@ -37,6 +37,25 @@ test('health remains available and readiness reports dependency failure', async 
   } finally { await app.close(); }
 });
 
+test('health probes do not depend on the identity provider', async () => {
+  const { config } = dependencies();
+  let authenticationAttempts = 0;
+  const app = await buildApp({
+    config,
+    authenticator: { configured: true, authenticate: async () => { authenticationAttempts++; throw new Error('identity provider unavailable'); } },
+    readinessProbe: { query: async () => undefined },
+    workspaceService: { listForPrincipal: async () => [] },
+    invitationService: { redeem: async () => ({ workspaceId: 'w', role: 'member' as const }) }
+  });
+  try {
+    assert.equal((await app.inject({ method: 'GET', url: '/api/v1/health' })).statusCode, 200);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/v1/ready' })).statusCode, 200);
+    assert.equal(authenticationAttempts, 0);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/v1/workspaces' })).statusCode, 500);
+    assert.equal(authenticationAttempts, 1);
+  } finally { await app.close(); }
+});
+
 test('workspace route requires an authenticated principal', async () => {
   const { config } = dependencies();
   const app = await buildApp({
