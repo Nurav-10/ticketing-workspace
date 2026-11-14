@@ -1,6 +1,8 @@
 # Phase 3 implementation blueprint — Issues vertical slice
 
-**Status:** planned; implementation has not started. **Updated:** 14 November 2026. This blueprint expands [Phase 3](03-issues.md). Phase 3 depends on Phase 1 identity, sessions, workspace/team authorization and Phase 2's accessible application shell. Existing groundwork does not establish either phase as complete.
+**Status:** implementation in progress. **Updated:** 14 November 2026. This blueprint expands [Phase 3](03-issues.md). Phase 3 depends on Phase 1 identity, sessions, workspace/team authorization and Phase 2's accessible application shell. Existing groundwork does not establish either phase as complete.
+
+**Current Docker evidence:** Prisma schema generation and validation, workspace typecheck and production builds passed; 114 API unit tests, worker/contracts tests, and 40 PostgreSQL integration tests passed against the disposable test service. After review changes, typecheck/build and the issue integration case passed again, including reciprocal cross-workspace assignment and cross-team idempotency races. The case also exercises tenant/private-team access, numbering, pagination, version conflicts, archive/restore and atomic history/outbox behavior. Browser/accessibility validation remains deferred at the user's request; real provider, staging and existing-database baseline validation also remain outstanding. These checks do not establish full Phase 3 acceptance.
 
 ## Starting point and readiness gates
 
@@ -17,7 +19,7 @@ Before enabling issue routes or controls, close the applicable Phase 1/2 gates: 
 - Any active workspace member who can read a team may create and manage its issues. Private-team membership remains required for all reads and writes; workspace owner/admin roles do not bypass private-team access. This slice has no per-issue ACL. Keep the policy entry point separate so later role/permission refinement has one seam.
 - Assignee, when present, must be an active workspace member and, for private teams, a team member. The creator is the verified principal. Do not accept actor, workspace, number, version, status history or timestamps as trusted request fields.
 - Team key changes do not change issue UUIDs or API resource identity. Until alias history is implemented, keys are current display strings only; clients should retain canonical issue URLs using UUIDs. Do not promise resolution of old display keys.
-- Archive is a reversible soft state. No issue hard-delete endpoint is in scope. Archived issues are excluded from default lists and remain readable to authorized team members through detail/history; restore is a version-checked mutation.
+- Archive is a reversible soft state. No issue hard-delete endpoint is in scope. Archived issues are excluded from default lists, discoverable through the authorized archived filter, and readable through detail/history; restore is a version-checked mutation.
 
 ## Module map and dependency direction
 
@@ -58,7 +60,9 @@ Add an additive Prisma migration after the currently applied migration history; 
 - Keep status, priority and version checks in PostgreSQL as well as TypeScript. Status transitions are checked by the domain using a finite explicit graph; direct writes to an arbitrary status are impossible through the public API.
 - `issue_activity_events`: append-only logical history for create, field changes, archive and restore. Include UUID, workspace/team/issue IDs, actor ID, event kind, safe structured metadata, and DB timestamp. Metadata is an allowlist of changed field names and safe before/after values (status/priority/assignee IDs); do not store title, description, credentials, raw request bodies or arbitrary user text. Add same-tenant FKs and indexes `(issue_id, created_at, id)` and `(workspace_id, created_at)`.
 - `outbox_events`: durable delivery seam for the later Phase 5 live updates. Include event UUID, workspace/team/resource IDs, event kind, schema version, safe payload, created/delivered timestamps and bounded retry metadata. Add a claim index for pending rows. The issue transaction writes it, but Phase 3 does not promise a running publisher or live UI updates. Avoid payloads containing issue descriptions/titles; clients refetch authorized state.
-- Add a partial unique index for live idempotency keys scoped by actor/workspace/operation (or an explicit expiry/retention design) and persist a canonical payload hash plus the canonical response/resource reference. The stored key must be bounded and treated as opaque. Define a finite retention (suggest 24 hours minimum; choose it from retry expectations before implementation), cleanup behavior, and whether expired keys can be reused. A same-key/same-hash retry returns the original result; same key with a different hash returns 409; an incomplete/rolled-back request reserves nothing.
+- Store a unique idempotency key scoped by actor/workspace/operation with a canonical request hash and resource reference. The hash includes the workspace and team so a retry cannot resolve to another team's issue. Use the database clock for a 24-hour retention; after expiry, reuse requires locking and replacing the expired row within the create transaction. A same-key/same-hash retry returns the same issue after current authorization, using its current representation if it has since changed; a different hash returns 409; an incomplete/rolled-back request reserves nothing. Clean expired records in bounded batches without deleting a live or newly renewed row.
+
+  The Prisma repository provides a bounded cleanup hook; scheduling and monitoring it are an operational responsibility until the worker has a real job scheduler.
 
 Do not add a per-issue security audit event for ordinary content changes to the existing security audit log: that log intentionally has a small policy-event vocabulary and sensitive metadata constraints. `issue_activity_events` is product history, not a substitute for append-only security audit.
 
@@ -87,7 +91,7 @@ The create and update validators must have explicit UTF-8/body limits. Suggested
 4. Issue numbering is allocated atomically from the team counter. Rollback returns the number to the available sequence by rolling back the counter update with issue creation. Concurrent creators may proceed in parallel on different teams; same-team allocation serializes briefly at the counter row. Do not use advisory locks unless profiling shows a concrete need.
 5. In one transaction, persist the issue mutation, one activity event and one outbox row. If any write fails, roll all three back. For idempotent create, store the idempotency result in that transaction so the response cannot be lost independently of the issue. Version conflicts do not emit activity/outbox rows.
 6. Use a consistent lock order (workspace → team → workspace membership rows, actor then target sorted by UUID if more than one → issue/counter/idempotency rows); document exceptions and bound Prisma transaction wait/timeout. Prevent deadlocks by never acquiring these in a reverse order. Retry only known serialization/deadlock errors a small bounded number of times, and only where the command is safe/idempotent.
-7. Read paths use `findFirst`/equivalent with all tenant keys plus current membership/team visibility predicates; never fetch an issue globally by UUID and authorize afterward. Lists are bounded, deterministically ordered, and cursor on a stable tuple such as `(created_at, id)`.
+7. Read paths use `findFirst`/equivalent with all tenant keys plus current membership/team visibility predicates; never fetch an issue globally by UUID and authorize afterward. Lists are bounded and cursor on `(created_at, id)`. Issue and activity creation timestamps use millisecond precision so JavaScript cursor serialization preserves the exact database value; the UUID breaks ties.
 
 ## Web workflows and accessibility
 
@@ -117,6 +121,8 @@ Each commit should be independently reviewable and should not claim completion b
 ## Docker-only verification plan
 
 Do not install packages, run Bun/Node/Prisma tests or builds on the host. Use the repository's Compose-built application image and isolated `db-test` service; never point an integration test, migration experiment or cleanup script at the development `db` volume or production. Extend `apps/api/integration/test-database.ts`'s exact allowlist rather than weakening it. Use unique test identifiers and explicit row cleanup in the disposable test database; do not introduce an automatic reset path for the development database.
+
+For rollout, verify a backup and apply the additive issue migration before enabling a build that queries the new tables. Rolling application code back must leave the issue tables and their data intact; do not automatically drop them or reset the database. A database rollback or recovery involving already-created issues requires a separately reviewed restore/forward-migration plan. The existing development database still requires its guarded Prisma baseline before any pending migrations can be deployed.
 
 Run only after implementation and through Docker, with exact commands/results recorded in the phase handoff:
 

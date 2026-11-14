@@ -2,7 +2,7 @@ import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'rea
 import { Icon } from '../ui/Icon'
 import { Button } from '../ui/Button'
 import { StateBadge } from '../ui/StateBadge'
-import type { WorkspaceSummary } from '../../features/workspace/workspace-api'
+import type { TeamSummary, WorkspaceSummary } from '../../features/workspace/workspace-api'
 
 function WorkspaceMark() {
   return <span className="workspace-mark" aria-hidden="true"><i /><i /><i /></span>
@@ -15,13 +15,20 @@ type SidebarProps = {
   auth: 'loading' | 'available' | 'unavailable' | 'error'
   workspaces: 'loading' | 'signed-out' | 'ready' | 'error'
   items: WorkspaceSummary[]
+  selectedWorkspaceId: string
+  onSelectWorkspace: (id: string) => void
+  teams: TeamSummary[]
+  teamAccess: 'idle' | 'loading' | 'signed-out' | 'ready' | 'error'
+  selectedTeamId: string
+  onSelectTeam: (id: string) => void
+  onRetryTeams: () => void
   signingOut: boolean
   signOutError?: string
   onSignOut: () => void
   onRetry: () => void
 }
 
-export function Sidebar({ open, mobile, onClose, auth, workspaces, items, signingOut, signOutError, onSignOut, onRetry }: SidebarProps) {
+export function Sidebar({ open, mobile, onClose, auth, workspaces, items, selectedWorkspaceId, onSelectWorkspace, teams, teamAccess, selectedTeamId, onSelectTeam, onRetryTeams, signingOut, signOutError, onSignOut, onRetry }: SidebarProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -54,7 +61,7 @@ export function Sidebar({ open, mobile, onClose, auth, workspaces, items, signin
     : workspaces === 'ready' ? `${items.length} workspace${items.length === 1 ? '' : 's'} available`
       : workspaces === 'signed-out' ? 'Not signed in'
         : 'Workspace access unavailable'
-  const workspaceName = items.length > 1 ? 'Your workspaces' : items[0]?.name ?? 'Workspace'
+  const workspaceName = items.find((item) => item.id === selectedWorkspaceId)?.name ?? (workspaces === 'loading' ? 'Loading workspace…' : 'Workspace')
   const accountMessage = workspaces === 'loading' ? 'Checking access…'
     : workspaces === 'ready' ? 'Signed in'
       : workspaces === 'signed-out' ? 'Not signed in'
@@ -72,15 +79,31 @@ export function Sidebar({ open, mobile, onClose, auth, workspaces, items, signin
 
       <div className="sidebar-content">
         <div className="sidebar-label">Workspace</div>
-        {items.length > 1 && <ul className="workspace-list" aria-label="Your workspaces">{items.map((workspace) => <li key={workspace.id}>{workspace.name}</li>)}</ul>}
+        <label className="context-select-label" htmlFor="workspace-context">Workspace</label>
+        <select id="workspace-context" className="context-select" value={selectedWorkspaceId} onChange={(event) => onSelectWorkspace(event.target.value)} disabled={workspaces !== 'ready' || items.length === 0}>
+          {workspaces === 'ready' && items.length === 0 ? <option value="">No workspaces available</option> : null}
+          {workspaces === 'loading' ? <option value="">Loading workspaces…</option> : null}
+          {workspaces === 'signed-out' ? <option value="">Sign in to select a workspace</option> : null}
+          {workspaces === 'error' ? <option value="">Workspace access unavailable</option> : null}
+          {items.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+        </select>
         <nav className="primary-nav" aria-label="Workspace sections">
           <div className="nav-item nav-current" aria-current="page"><Icon name="inbox" /><span>All issues</span></div>
           <div className="nav-item nav-disabled" aria-disabled="true"><Icon name="user" /><span>My issues</span><small>Unavailable</small></div>
           <div className="nav-item nav-disabled" aria-disabled="true"><Icon name="layers" /><span>Projects</span><small>Unavailable</small></div>
         </nav>
 
-        <div className="sidebar-label team-label">Teams</div>
-        <div className="team-row"><span className="team-glyph">·</span><span>Team access unavailable</span></div>
+        <div className="sidebar-label team-label">Team</div>
+        <label className="context-select-label" htmlFor="team-context">Issue scope</label>
+        <select id="team-context" className="context-select" value={selectedTeamId} onChange={(event) => onSelectTeam(event.target.value)} disabled={teamAccess !== 'ready' || teams.length === 0}>
+          {teamAccess === 'loading' ? <option value="">Loading teams…</option> : null}
+          {teamAccess === 'signed-out' ? <option value="">Sign in to load teams</option> : null}
+          {teamAccess === 'error' ? <option value="">Teams unavailable</option> : null}
+          {teamAccess === 'ready' && teams.length === 0 ? <option value="">No teams available</option> : null}
+          {teamAccess === 'ready' && teams.length > 0 ? <option value="">All teams</option> : null}
+          {teams.map((team) => <option key={team.id} value={team.id}>{team.name} ({team.key})</option>)}
+        </select>
+        {teamAccess === 'error' && <Button className="access-retry" size="small" variant="subtle" onClick={onRetryTeams}>Retry loading teams</Button>}
 
         <div className="sidebar-label views-label">Views</div>
         <div className="sidebar-empty"><span className="sidebar-empty-mark" aria-hidden="true">—</span><span>Saved views will appear<br />when workspace access is available</span></div>

@@ -15,6 +15,9 @@ import { loadOidcProviderConfiguration } from './identity/oidc-provider.js';
 import { createRuntimeRateLimiters } from './rate-limit/runtime.js';
 import { loadBootstrapConfiguration } from './bootstrap/config.js';
 import { loadMetricsAuthorizer } from './observability/config.js';
+import { IssueApplicationService } from './issues/issue-service.js';
+import { PrismaIssueRepository } from './issues/prisma-issue-repository.js';
+import { IssueAssigneeApplicationService, PrismaIssueAssigneeRepository } from './issues/issue-assignees.js';
 
 const config = loadConfig();
 const prisma = createPrismaClient(config);
@@ -47,7 +50,9 @@ const app = buildApp({
   workspaceService: new WorkspaceService(new PrismaWorkspaceRepository(prisma)),
   invitationService: new InvitationService(new PrismaInvitationRepository(prisma)),
   teamService: new TeamService(new PrismaTeamRepository(prisma)),
-  membershipService: new WorkspaceMembershipService(new PrismaMembershipRepository(prisma))
+  membershipService: new WorkspaceMembershipService(new PrismaMembershipRepository(prisma)),
+  issueService: new IssueApplicationService(new PrismaIssueRepository(prisma)),
+  issueAssigneeService: new IssueAssigneeApplicationService(new PrismaIssueAssigneeRepository(prisma))
 });
 const server = app.listen(config.PORT, config.HOST, () => {
   console.info(`API listening on ${config.HOST}:${config.PORT}`);

@@ -5,6 +5,13 @@ export type WorkspaceSummary = {
   role: string
 }
 
+export type TeamSummary = {
+  id: string
+  name: string
+  key: string
+  visibility: 'workspace' | 'private'
+}
+
 type ApiEnvelope<T> = { data: T }
 
 export class ApiRequestError extends Error {
@@ -42,6 +49,14 @@ export async function getWorkspaces(): Promise<WorkspaceSummary[]> {
   const result = await request<ApiEnvelope<WorkspaceSummary[]>>('/api/v1/workspaces')
   if (!Array.isArray(result.data) || result.data.some((workspace) => !workspace || typeof workspace.name !== 'string')) {
     throw new ApiRequestError('The API returned invalid workspace data')
+  }
+  return result.data
+}
+
+export async function getTeams(workspaceId: string): Promise<TeamSummary[]> {
+  const result = await request<ApiEnvelope<TeamSummary[]>>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/teams`)
+  if (!Array.isArray(result.data) || result.data.some((team) => !team || typeof team.id !== 'string' || typeof team.name !== 'string' || typeof team.key !== 'string' || (team.visibility !== 'workspace' && team.visibility !== 'private'))) {
+    throw new ApiRequestError('The API returned invalid team data')
   }
   return result.data
 }

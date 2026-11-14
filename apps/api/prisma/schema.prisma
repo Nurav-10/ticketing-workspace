@@ -35,6 +35,10 @@ model User {
   sessions        AppSession[]
   identities      UserIdentity[]
   securityAuditEvents SecurityAuditEvent[] @relation("SecurityAuditActor")
+  assignedIssues     Issue[]               @relation("IssueAssignee")
+  createdIssues      Issue[]               @relation("IssueCreator")
+  issueActivityEvents IssueActivityEvent[]  @relation("IssueActivityActor")
+  issueIdempotencyRecords IssueIdempotencyRecord[] @relation("IssueIdempotencyActor")
 
   @@map("users")
 }
@@ -101,6 +105,10 @@ model Workspace {
   teams       Team[]
   invitations Invitation[]
   auditEvents SecurityAuditEvent[]
+  issues      Issue[]
+  issueActivityEvents IssueActivityEvent[]
+  outboxEvents OutboxEvent[]
+  issueIdempotencyRecords IssueIdempotencyRecord[]
 
   @@map("workspaces")
 }
@@ -162,10 +170,137 @@ model Team {
   updatedAt   DateTime         @default(now()) @map("updated_at") @db.Timestamptz(6)
   workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "teams_workspace_id_fkey")
   memberships TeamMembership[]
+  nextIssueNumber Int @default(1) @map("next_issue_number")
+  issues Issue[]
+  issueActivityEvents IssueActivityEvent[]
+  outboxEvents OutboxEvent[]
 
   @@unique([workspaceId, id], map: "teams_workspace_id_id_key")
   @@unique([workspaceId, key], map: "teams_workspace_id_key_key")
   @@map("teams")
+}
+
+enum IssueStatus {
+  backlog
+  todo
+  in_progress
+  done
+  canceled
+
+  @@map("issue_status")
+}
+
+enum IssuePriority {
+  none
+  low
+  medium
+  high
+  urgent
+
+  @@map("issue_priority")
+}
+
+enum IssueActivityKind {
+  created
+  fields_changed
+  status_changed
+  archived
+  restored
+
+  @@map("issue_activity_kind")
+}
+
+model Issue {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  teamId String @map("team_id") @db.Uuid
+  issueNumber Int @map("issue_number")
+  title String @db.VarChar(250)
+  description String? @db.VarChar(20000)
+  status IssueStatus @default(backlog)
+  priority IssuePriority @default(none)
+  assigneeUserId String? @map("assignee_user_id") @db.Uuid
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  version Int @default(1)
+  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(dbgenerated("clock_timestamp()")) @map("updated_at") @db.Timestamptz(6)
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(6)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, map: "issues_workspace_id_fkey")
+  team Team @relation(fields: [workspaceId, teamId], references: [workspaceId, id], onDelete: Restrict, map: "issues_workspace_id_team_id_fkey")
+  assignee User? @relation("IssueAssignee", fields: [assigneeUserId], references: [id], onDelete: Restrict, map: "issues_assignee_user_id_fkey")
+  creator User @relation("IssueCreator", fields: [createdByUserId], references: [id], onDelete: Restrict, map: "issues_created_by_user_id_fkey")
+  activityEvents IssueActivityEvent[]
+  outboxEvents OutboxEvent[]
+  idempotencyRecords IssueIdempotencyRecord[]
+
+  @@unique([teamId, issueNumber], map: "issues_team_id_issue_number_key")
+  @@unique([workspaceId, teamId, id], map: "issues_workspace_id_team_id_id_key")
+  @@unique([workspaceId, id], map: "issues_workspace_id_id_key")
+  @@index([workspaceId, teamId, createdAt(sort: Desc), id(sort: Desc)], map: "issues_team_created_at_id_idx")
+  @@index([workspaceId, teamId, status, createdAt(sort: Desc), id(sort: Desc)], map: "issues_team_status_created_at_id_idx")
+  @@index([workspaceId, teamId, priority, createdAt(sort: Desc), id(sort: Desc)], map: "issues_team_priority_created_at_id_idx")
+  @@index([workspaceId, assigneeUserId], map: "issues_workspace_assignee_idx")
+  @@map("issues")
+}
+
+model IssueActivityEvent {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  teamId String @map("team_id") @db.Uuid
+  issueId String @map("issue_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  eventKind IssueActivityKind @map("event_kind")
+  metadata Json @db.JsonB
+  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(3)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, map: "issue_activity_events_workspace_id_fkey")
+  team Team @relation(fields: [workspaceId, teamId], references: [workspaceId, id], onDelete: Restrict, map: "issue_activity_events_workspace_id_team_id_fkey")
+  issue Issue @relation(fields: [workspaceId, teamId, issueId], references: [workspaceId, teamId, id], onDelete: Restrict, map: "issue_activity_events_workspace_id_team_id_issue_id_fkey")
+  actor User @relation("IssueActivityActor", fields: [actorUserId], references: [id], onDelete: Restrict, map: "issue_activity_events_actor_user_id_fkey")
+
+  @@index([issueId, createdAt, id], map: "issue_activity_events_issue_created_at_id_idx")
+  @@index([workspaceId, createdAt], map: "issue_activity_events_workspace_created_at_idx")
+  @@map("issue_activity_events")
+}
+
+model OutboxEvent {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  teamId String @map("team_id") @db.Uuid
+  issueId String @map("issue_id") @db.Uuid
+  eventKind String @map("event_kind") @db.VarChar(64)
+  schemaVersion Int @default(1) @map("schema_version")
+  payload Json @db.JsonB
+  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(6)
+  deliveredAt DateTime? @map("delivered_at") @db.Timestamptz(6)
+  retryCount Int @default(0) @map("retry_count")
+  nextAttemptAt DateTime @default(dbgenerated("clock_timestamp()")) @map("next_attempt_at") @db.Timestamptz(6)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, map: "outbox_events_workspace_id_fkey")
+  team Team @relation(fields: [workspaceId, teamId], references: [workspaceId, id], onDelete: Restrict, map: "outbox_events_workspace_id_team_id_fkey")
+  issue Issue @relation(fields: [workspaceId, teamId, issueId], references: [workspaceId, teamId, id], onDelete: Restrict, map: "outbox_events_workspace_id_team_id_issue_id_fkey")
+
+  @@index([nextAttemptAt, createdAt], map: "outbox_events_pending_idx")
+  @@map("outbox_events")
+}
+
+model IssueIdempotencyRecord {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  teamId String @map("team_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  operation String @db.VarChar(64)
+  key String @db.VarChar(255)
+  payloadHash Bytes @map("payload_hash") @db.ByteA
+  issueId String @map("issue_id") @db.Uuid
+  response Json @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt DateTime @default(dbgenerated("CURRENT_TIMESTAMP + interval '24 hours'")) @map("expires_at") @db.Timestamptz(6)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, map: "issue_idempotency_records_workspace_id_fkey")
+  actor User @relation("IssueIdempotencyActor", fields: [actorUserId], references: [id], onDelete: Restrict, map: "issue_idempotency_records_actor_user_id_fkey")
+  issue Issue @relation(fields: [workspaceId, teamId, issueId], references: [workspaceId, teamId, id], onDelete: Restrict, map: "issue_idempotency_records_workspace_id_team_id_issue_id_fkey")
+
+  @@unique([workspaceId, actorUserId, operation, key], map: "issue_idempotency_records_scope_key")
+  @@index([expiresAt], map: "issue_idempotency_records_expires_at_idx")
+  @@map("issue_idempotency_records")
 }
 
 model TeamMembership {

@@ -8,6 +8,10 @@
 .workspace-mark i:nth-child(1) { height: 8px; opacity: .62; }.workspace-mark i:nth-child(2) { height: 13px; }.workspace-mark i:nth-child(3) { height: 9px; opacity: .78; }
 .workspace-name { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }.workspace-name b { overflow: hidden; color: var(--color-text-primary); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }.workspace-name small { color: var(--color-text-muted); font-size: 12px; }
 .workspace-list { display: grid; gap: 3px; margin: -2px 0 12px; padding: 0 8px 0 27px; color: var(--color-text-secondary); list-style: none; font-size: 12px; }.workspace-list li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.context-select-label { display: block; margin: 8px 8px 5px; color: var(--color-text-muted); font-size: 12px; }
+.context-select { display: block; width: calc(100% - 12px); min-height: 34px; margin: 0 6px; padding: 0 8px; overflow: hidden; border: 1px solid var(--color-border); border-radius: 5px; color: var(--color-text-secondary); background: var(--color-surface-raised); font: inherit; font-size: 12px; text-overflow: ellipsis; }
+.context-select:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.context-select:disabled { color: var(--color-text-muted); opacity: .78; }
 .switcher-chevron { color: var(--color-text-muted); display: grid; place-items: center; }.switcher-chevron svg { width: 15px; height: 15px; }
 .sidebar-close { display: none; }
 .sidebar-content { flex: 1; padding: 23px 11px 12px; }
@@ -17,7 +21,7 @@
 .nav-item > svg { width: 16px; height: 16px; color: var(--color-text-muted); }
 .nav-current { color: var(--color-accent-strong); background: var(--color-accent-soft); font-weight: 600; }.nav-current > svg { color: var(--color-accent); }
 .nav-disabled { color: var(--color-text-muted); }.nav-disabled small { margin-left: auto; color: var(--color-text-muted); font-size: 12px; }
-.team-label { margin-top: 29px; }.team-row { display: flex; min-height: 33px; align-items: center; gap: 9px; padding: 0 9px; color: var(--color-text-secondary); font-size: 12px; }
+.team-label { margin-top: 22px; }.team-row { display: flex; min-height: 33px; align-items: center; gap: 9px; padding: 0 9px; color: var(--color-text-secondary); font-size: 12px; }
 .team-glyph { width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid var(--color-border-strong); border-radius: 5px; background: var(--color-surface-raised); color: var(--color-accent); font: 600  12px Georgia,serif; }
 .team-pending { margin-left: auto; color: var(--color-text-muted); font-size: 12px; }
 .views-label { margin-top: 30px; }.sidebar-empty { display: flex; align-items: center; gap: 9px; margin: 12px 8px; color: var(--color-text-muted); font-size: 12px; line-height: 1.5; }

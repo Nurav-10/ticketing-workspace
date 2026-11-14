@@ -1,0 +1,79 @@
+.issues-feature {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--space-8) clamp(16px, 4vw, 48px);
+  color: var(--color-text-primary);
+}
+
+.issues-feature button, .issues-feature input, .issues-feature textarea, .issues-feature select { font: inherit; }
+.issues-feature button {
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  padding: 9px 14px;
+  background: var(--color-accent);
+  color: var(--color-surface);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
+}
+.issues-feature button:hover:not(:disabled) { background: var(--color-accent-strong); border-color: var(--color-accent-strong); }
+.issues-feature button:disabled { opacity: .55; cursor: not-allowed; }
+.issues-feature button:focus-visible, .issues-feature input:focus-visible, .issues-feature textarea:focus-visible, .issues-feature select:focus-visible { outline: var(--focus-width) solid var(--color-focus); outline-offset: var(--focus-offset); }
+.issues-heading, .issues-list-head, .issues-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.issues-heading { padding: 10px 0 var(--space-6); border-bottom: 1px solid var(--color-border); }
+.issues-heading h1 { margin: 4px 0; font-size: var(--font-size-title); }
+.issues-heading p { margin: 4px 0; color: var(--color-text-secondary); }
+.issues-eyebrow { font-size: var(--font-size-caption); letter-spacing: .08em; font-weight: var(--font-weight-semibold); color: var(--color-text-muted); }
+.issues-list-head { padding: 20px 0 10px; }
+.issues-list-head h2 { font-size: 16px; }
+.issues-list { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--color-border); }
+.issues-list li { border-bottom: 1px solid var(--color-border); }
+.issues-row {
+  display: grid; width: 100%; grid-template-columns: 100px minmax(140px, 1fr) 130px 100px;
+  align-items: center; gap: 12px; text-align: left; background: transparent !important;
+  color: inherit !important; border: 0 !important; border-radius: 0 !important; padding: 15px 8px !important;
+}
+.issues-row:hover:not(:disabled) { background: var(--color-surface-hover) !important; }
+.issues-key { font: var(--font-weight-semibold) var(--font-size-caption) var(--font-mono); color: var(--color-text-muted); }
+.issues-title { overflow: hidden; text-overflow: ellipsis; }
+.issues-status, .issues-priority { font-size: var(--font-size-caption); text-transform: capitalize; }
+.issues-empty { padding: var(--space-8) 0; color: var(--color-text-secondary); }
+.issues-panel { margin-top: 20px; padding: var(--space-6); border: 1px solid var(--color-border-strong); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-card); }
+.issues-panel h2 { font-size: 20px; margin: 16px 0; }
+.issues-back { background: transparent !important; color: var(--color-text-secondary) !important; border: 0 !important; padding: 4px 0 !important; }
+.issues-panel form { display: grid; gap: 16px; max-width: 720px; }
+.issues-panel label { display: grid; gap: 6px; font-size: var(--font-size-body); font-weight: var(--font-weight-semibold); }
+.issues-panel label > span { color: var(--color-text-muted); font-size: var(--font-size-caption); font-weight: var(--font-weight-regular); }
+.issues-panel input, .issues-panel textarea, .issues-panel select, .issues-actions select { width: 100%; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); padding: 10px; background: var(--color-surface); color: var(--color-text-primary); }
+.issues-form-actions, .issues-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.issues-feature button.secondary { background: var(--color-surface); color: var(--color-text-primary); border-color: var(--color-border-strong); }
+.issues-feature button.secondary:hover:not(:disabled) { background: var(--color-surface-hover); border-color: var(--color-border-strong); }
+.issues-notice { padding: 10px 12px; background: var(--color-surface-subtle); border-radius: var(--radius-md); }
+.issues-error { padding: 12px; background: var(--color-danger-soft); border: 1px solid var(--color-danger); border-radius: var(--radius-md); color: var(--color-danger); }
+.issues-error div { display: flex; gap: 8px; margin-top: 10px; }
+.issues-error button { font-size: var(--font-size-body); }
+.issues-detail-heading h2 { margin: 3px 0 18px; }
+.issues-detail-heading > span { color: var(--color-text-muted); font-size: var(--font-size-caption); }
+.issues-description { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.issues-meta { display: flex; gap: var(--space-8); flex-wrap: wrap; padding: 16px 0; border-block: 1px solid var(--color-border); }
+.issues-meta div { min-width: 100px; }
+.issues-meta dt { color: var(--color-text-muted); font-size: var(--font-size-caption); }
+.issues-meta dd { margin: 4px 0; text-transform: capitalize; }
+.issues-actions { margin: 18px 0; }
+.issues-actions label { display: flex; align-items: center; gap: 8px; }
+.issues-actions select { width: auto; }
+.issues-history { border-top: 1px solid var(--color-border); margin-top: 24px; padding-top: 14px; }
+.issues-history h3 { font-size: 15px; }
+.issues-history ul { padding-left: 20px; color: var(--color-text-secondary); font-size: var(--font-size-body); }
+.issues-history p { color: var(--color-text-muted); font-size: var(--font-size-body); }
+.issues-scope-toggle { display: flex; align-items: center; gap: 16px; border: 0; padding: 0; margin: 8px 0; }
+.issues-scope-toggle label { display: flex; align-items: center; gap: 6px; font-size: var(--font-size-body); }
+.issues-scope-toggle input { width: auto; margin: 0; }
+
+@media (max-width: 640px) {
+  .issues-feature { padding: 22px 16px; }
+  .issues-row { grid-template-columns: 75px minmax(100px, 1fr) 82px; gap: 8px; padding: 12px 4px !important; }
+  .issues-priority { display: none; }
+  .issues-panel { padding: 17px; }
+  .issues-actions { align-items: flex-start; }
+  .issues-actions label { width: 100%; justify-content: space-between; }
+}

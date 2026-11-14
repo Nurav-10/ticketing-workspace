@@ -21,6 +21,9 @@ import type { TeamAdministrator, TeamLister } from './teams/team-service.js';
 import { registerMembershipRoutes } from './memberships/membership-routes.js';
 import type { WorkspaceMembershipAdministrator } from './memberships/membership-service.js';
 import { ApiMetrics, createHttpMetricsMiddleware, createMetricsRouter, type MetricsAuthorizer } from './observability/metrics.js';
+import { registerIssueRoutes } from './issues/issue-routes.js';
+import type { IssueService } from './issues/issue-service.js';
+import { registerIssueAssigneeRoutes, type IssueAssigneeService } from './issues/issue-assignees.js';
 
 export interface AppOptions {
   config: Config;
@@ -33,6 +36,8 @@ export interface AppOptions {
   authRoutes?: { mountPath: string; router: Router };
   invitationRateLimiters?: { issue: RequestHandler; redeem: RequestHandler };
   metricsAuthorizer?: MetricsAuthorizer;
+  issueService?: IssueService;
+  issueAssigneeService?: IssueAssigneeService;
 }
 
 export function buildApp({
@@ -46,6 +51,8 @@ export function buildApp({
   authRoutes,
   invitationRateLimiters,
   metricsAuthorizer,
+  issueService,
+  issueAssigneeService,
 }: AppOptions): Express {
   const app = express();
   app.disable("x-powered-by");
@@ -93,6 +100,8 @@ export function buildApp({
   registerInvitationRoutes(protectedRoutes, invitationService);
   registerTeamRoutes(protectedRoutes, teamService);
   registerMembershipRoutes(protectedRoutes, membershipService);
+  if (issueService) registerIssueRoutes(protectedRoutes, issueService);
+  if (issueAssigneeService) registerIssueAssigneeRoutes(protectedRoutes, issueAssigneeService);
   app.use("/api/v1", protectedRoutes);
   registerErrorHandler(app);
   return app;
