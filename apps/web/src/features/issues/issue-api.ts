@@ -8,6 +8,27 @@ export type Issue = {
 }
 export type IssueDetail = { issue: Issue; activity: Array<{ id: string; kind: string; metadata: Record<string, unknown>; createdAt: string; actor?: { id: string; displayName: string } | null }>; nextActivityCursor?: string }
 export type IssuePage = { items: Issue[]; nextCursor?: string }
+export type IssueSearchItem = Pick<Issue, 'id' | 'key' | 'title' | 'status' | 'priority' | 'archivedAt'>
+export type IssueSearchPage = { items: IssueSearchItem[]; nextCursor?: string }
+export async function searchIssues(workspaceId: string, teamId: string, searchTerm: string, archiveMode: 'active' | 'archived', signal?: AbortSignal, cursor?: string): Promise<IssueSearchPage> {
+  const { data } = await request<unknown>(`${root(workspaceId, teamId)}/search`, {
+    method: 'POST', cache: 'no-store', signal, body: JSON.stringify({ searchTerm, archiveMode, ...(cursor ? { cursor } : {}) }),
+  })
+  const invalid = (): never => { throw new IssueApiError('The issue service returned an invalid response.', 200) }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return invalid()
+  const page = data as Record<string, unknown>
+  if (!Array.isArray(page.items) || (page.nextCursor !== undefined && (typeof page.nextCursor !== 'string' || !page.nextCursor || page.nextCursor.length > 1024))) return invalid()
+  const items = page.items.map((value: unknown): IssueSearchItem => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return invalid()
+    const item = value as Record<string, unknown>
+    if (typeof item.id !== 'string' || !item.id || typeof item.key !== 'string' || typeof item.title !== 'string'
+      || typeof item.status !== 'string' || !['backlog', 'todo', 'in_progress', 'done', 'canceled'].includes(item.status)
+      || typeof item.priority !== 'string' || !['none', 'low', 'medium', 'high', 'urgent'].includes(item.priority)
+      || (item.archivedAt !== null && typeof item.archivedAt !== 'string')) return invalid()
+    return { id: item.id, key: item.key, title: item.title, status: item.status as IssueStatus, priority: item.priority as IssuePriority, archivedAt: item.archivedAt as string | null }
+  })
+  return { items, ...(typeof page.nextCursor === 'string' ? { nextCursor: page.nextCursor } : {}) }
+}
 type Envelope<T> = { data: T }
 type ApiErrorBody = { error?: { code?: string; message?: string; requestId?: string } }
 

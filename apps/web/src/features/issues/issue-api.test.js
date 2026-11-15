@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'bun:test'
-import { getIssue, IssueApiError } from './issue-api'
+import { getIssue, searchIssues, IssueApiError } from './issue-api'
 import { activityLabel, appendIssueActivity, applyLatestIssueDetail, assigneeLabel, restoreHistoryEntry } from './issue-ui'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { IssueList } from './IssueList'
 import { IssueDetailPanel } from './IssueDetailPanel'
 import { IssueForm } from './IssueForm'
+import { IssueSearchResults } from './IssueSearch'
 
 describe('issue assignee presentation', () => {
   it('distinguishes an available assignee, an unavailable former assignee, and no assignee', () => {
@@ -68,6 +69,41 @@ describe('issue activity pages', () => {
       const result = await getIssue('workspace', 'team', 'issue-1', undefined, 'cursor+/=')
       expect(requestedUrl).toBe('/api/v1/workspaces/workspace/teams/team/issues/issue-1?activityCursor=cursor%2B%2F%3D')
       expect(result.nextActivityCursor).toBe('next')
+    } finally { globalThis.fetch = originalFetch }
+  })
+})
+
+describe('issue search', () => {
+  it('presents search loading, empty, and result states without echoing issue descriptions', () => {
+    const loading = renderToStaticMarkup(createElement(IssueSearchResults, { loading: true, items: [] }))
+    const empty = renderToStaticMarkup(createElement(IssueSearchResults, { loading: false, items: [] }))
+    const results = renderToStaticMarkup(createElement(IssueSearchResults, { loading: false, items: [{ id: 'one', key: 'ENG-1', title: 'Search result', status: 'todo', priority: 'high', description: 'private detail' }], onOpen() {} }))
+    expect(loading).toContain('Searching issues')
+    expect(empty).toContain('No matching issues')
+    expect(results).toContain('Search result')
+    expect(results).not.toContain('private detail')
+  })
+  it('sends search text in a scoped POST body rather than the URL', async () => {
+    const originalFetch = globalThis.fetch
+    let captured
+    globalThis.fetch = async (url, options) => {
+      captured = { url, options }
+      return new Response(JSON.stringify({ data: { items: [], nextCursor: 'next' } }), { status: 200 })
+    }
+    try {
+      const page = await searchIssues('workspace', 'team', 'private term', 'archived', undefined, 'cursor')
+      expect(captured.url).toBe('/api/v1/workspaces/workspace/teams/team/issues/search')
+      expect(captured.options.method).toBe('POST')
+      expect(captured.options.credentials).toBe('same-origin')
+      expect(JSON.parse(captured.options.body)).toEqual({ searchTerm: 'private term', archiveMode: 'archived', cursor: 'cursor' })
+      expect(page.nextCursor).toBe('next')
+    } finally { globalThis.fetch = originalFetch }
+  })
+  it('rejects malformed search pages instead of rendering incomplete rows', async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = async () => new Response(JSON.stringify({ data: { items: [{ id: 'incomplete' }] } }), { status: 200 })
+    try {
+      await expect(searchIssues('workspace', 'team', 'term', 'active')).rejects.toThrow('invalid response')
     } finally { globalThis.fetch = originalFetch }
   })
 })

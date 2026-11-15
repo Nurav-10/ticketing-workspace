@@ -4,6 +4,7 @@ import { createIssue, getIssue, IssueApiError, listIssues, setIssueArchived, tra
 import { IssueDetailPanel } from './IssueDetailPanel'
 import { IssueForm } from './IssueForm'
 import { IssueList } from './IssueList'
+import { IssueSearch } from './IssueSearch'
 import { appendIssueActivity, applyLatestIssueDetail, emptyIssueDraft, restoreHistoryEntry, type IssueDraft } from './issue-ui'
 import { useAssigneeOptions } from './useAssigneeOptions'
 
@@ -23,6 +24,7 @@ export function IssueFeature({ workspaceId, teamId, titleRef: pageTitleRef, onMu
   const [loadingActivity, setLoadingActivity] = useState(false)
   const [activityError, setActivityError] = useState('')
   const [archived, setArchived] = useState(false)
+  const [searchActive, setSearchActive] = useState(false)
   const archivedFilterRef = useRef(archived)
   const [nextCursor, setNextCursor] = useState<string | undefined>()
   const [error, setError] = useState('')
@@ -315,6 +317,14 @@ export function IssueFeature({ workspaceId, teamId, titleRef: pageTitleRef, onMu
     setView('create')
   }
 
+  const changeArchived = (value: boolean) => {
+    archivedFilterRef.current = value
+    setItems([])
+    setNextCursor(undefined)
+    setLoading(true)
+    setArchived(value)
+  }
+
   return <section className="issues-feature" aria-labelledby="issues-title">
     <header className="issues-heading"><div>
       <p className="issues-eyebrow">TEAM ISSUES</p>
@@ -331,20 +341,16 @@ export function IssueFeature({ workspaceId, teamId, titleRef: pageTitleRef, onMu
       <button type="button" disabled={busy} onClick={() => void reapplyDraft()}>Reapply my draft</button>
     </div>}</div>}
 
-    {view === 'list' && <IssueList
+    <IssueSearch workspaceId={workspaceId} teamId={teamId} archived={archived} visible={view === 'list'} busy={busy}
+      onArchivedChange={changeArchived} onActiveChange={setSearchActive} onOpen={(id) => void open(id)} />
+    {view === 'list' && !searchActive && <IssueList
       items={items}
       loading={loading}
       loadingMore={loadingMore}
       nextCursor={nextCursor}
       archived={archived}
       busy={busy}
-      onArchivedChange={(value) => {
-        archivedFilterRef.current = value
-        setItems([])
-        setNextCursor(undefined)
-        setLoading(true)
-        setArchived(value)
-      }}
+      onArchivedChange={changeArchived}
       onRefresh={() => void refresh()}
       onOpen={(id) => void open(id)}
       onLoadMore={() => void loadMore()}

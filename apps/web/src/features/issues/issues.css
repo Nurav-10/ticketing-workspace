@@ -69,12 +69,18 @@
 .issues-scope-toggle { display: flex; align-items: center; gap: 16px; border: 0; padding: 0; margin: 8px 0; }
 .issues-scope-toggle label { display: flex; align-items: center; gap: 6px; font-size: var(--font-size-body); }
 .issues-scope-toggle input { width: auto; margin: 0; }
+.issues-search-form { display: grid; gap: 8px; padding-top: var(--space-6); }
+.issues-search-form label { font-weight: var(--font-weight-semibold); font-size: var(--font-size-body); }
+.issues-search-form > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.issues-search-form input { flex: 1 1 220px; min-width: 0; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); padding: 9px 10px; background: var(--color-surface); color: var(--color-text-primary); }
+.issues-search-row { grid-template-columns: 100px minmax(140px, 1fr) 120px 80px; }
 
 @media (max-width: 640px) {
   .issues-feature { padding: 22px 16px; }
   .issues-row { grid-template-columns: 75px minmax(100px, 1fr) 82px; gap: 8px; padding: 12px 4px !important; }
   .issues-priority { display: none; }
   .issues-assignee { grid-column: 2 / -1; }
+  .issues-search-row { grid-template-columns: 75px minmax(100px, 1fr) 82px; }
   .issues-panel { padding: 17px; }
   .issues-actions { align-items: flex-start; }
   .issues-actions label { width: 100%; justify-content: space-between; }
