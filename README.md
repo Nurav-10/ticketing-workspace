@@ -1,6 +1,16 @@
-# Ticketing workspace
+# Ticketing Workspace
 
-A container-first foundation for a multi-workspace issue tracker. The product and phase plans are in [plan.md](plan.md); the active implementation breakdown is in [the Phase 1 blueprint](plans/01-implementation-blueprint.md).
+A container-first issue tracking workspace for teams, built with React, Express, Prisma, PostgreSQL, and Bun. Organize work across workspaces and teams, manage issues and labels, and search scoped issue results.
+
+> **Work in progress:** This is a development snapshot. Authentication and several workflows still require provider, browser, and deployment verification. It is not ready for production use.
+
+## What is here
+
+- Workspace and team administration, invitations, and role-based access controls.
+- Issue creation, editing, status changes, archive and restore, labels, and team-scoped search.
+- Container-based development with a PostgreSQL integration test environment.
+
+The product and phase plans are in [plan.md](plan.md); the implementation breakdown is in [the Phase 1 blueprint](plans/01-implementation-blueprint.md). See the [API README](apps/api/README.md) for API and migration details.
 
 **Backend migration in progress:** the Express and Prisma implementation and the commands below have not yet passed their full Docker verification. Do not reset or delete an existing database volume to make migration commands work; see the [migration plan](plans/01-express-prisma-migration.md).
 
