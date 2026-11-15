@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
-import { IssueDomainError, type CreateIssueCommand, type IssuePriority, type IssueScope, type IssueStatus, type IssueSummary } from './issue-domain.js';
+import { IssueDomainError, isIssueStatus, type CreateIssueCommand, type IssuePriority, type IssueScope, type IssueStatus, type IssueSummary } from './issue-domain.js';
 import type {
   AuthorizedIssueListQuery, AuthorizedIssueMutation, AuthorizedIssuePatch, IssueActivityMetadata,
   IssueActivityRecord, IssueDetail, IssuePage, IssueRepository,
@@ -114,12 +114,15 @@ export class PrismaIssueRepository implements IssueRepository {
       if (!allocated[0]) issueError('issue_number_exhausted', 'This team has no available issue numbers');
       const defaultStatus = await tx.workflowStatus.findFirst({
         where: { workspaceId: command.workspaceId, teamId: command.teamId, isDefault: true, isRetired: false },
-        select: { id: true },
+        select: { id: true, key: true },
       });
+      if (!defaultStatus) issueError('issue_invalid_transition', 'Team has no active default workflow status');
+      if (!isIssueStatus(defaultStatus.key)) issueError('issue_invalid_transition', 'Default workflow status is unavailable to this issue API');
       const issue = await tx.issue.create({ data: {
         workspaceId: command.workspaceId, teamId: command.teamId, issueNumber: allocated[0].issue_number,
         title: command.title, description: command.description, priority: command.priority,
-        workflowStatusId: defaultStatus?.id ?? null,
+        status: defaultStatus.key,
+        workflowStatusId: defaultStatus.id,
         assigneeUserId: command.assigneeUserId, createdByUserId: command.actorUserId,
       }, include: issueSummaryInclude(command.workspaceId, command.teamId) });
       await this.writeActivity(tx, issue, command.actorUserId, 'created', {});
@@ -203,11 +206,17 @@ export class PrismaIssueRepository implements IssueRepository {
         where: { workspaceId: input.workspaceId, teamId: input.teamId, key: input.targetStatus, isRetired: false },
         select: { id: true },
       });
+      if (!targetWorkflowStatus || !current.workflowStatusId) issueError('issue_invalid_transition', 'Workflow status is unavailable');
+      const edge = await tx.workflowTransition.findFirst({
+        where: { workspaceId: input.workspaceId, teamId: input.teamId, sourceStatusId: current.workflowStatusId, targetStatusId: targetWorkflowStatus.id },
+        select: { id: true },
+      });
+      if (!edge) issueError('issue_invalid_transition', 'Configured workflow does not allow that status change');
       const changed = await tx.issue.updateMany({
         where: { id: input.issueId, workspaceId: input.workspaceId, teamId: input.teamId, version: input.expectedVersion, status: { in: [...input.allowedFromStatuses] }, archivedAt: null },
         data: {
           status: input.targetStatus,
-          ...(targetWorkflowStatus ? { workflowStatusId: targetWorkflowStatus.id } : {}),
+          workflowStatusId: targetWorkflowStatus.id,
           version: { increment: 1 },
           updatedAt: new Date(),
         },

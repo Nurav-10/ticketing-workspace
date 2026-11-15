@@ -189,6 +189,7 @@ model Team {
   cycles Cycle[]
   workflowStatuses WorkflowStatus[]
   workflowTransitions WorkflowTransition[]
+  labels Label[]
 
   @@unique([workspaceId, id], map: "teams_workspace_id_id_key")
   @@unique([workspaceId, key], map: "teams_workspace_id_key_key")
@@ -255,6 +256,7 @@ model Issue {
   outboxEvents OutboxEvent[]
   idempotencyRecords IssueIdempotencyRecord[]
   comments Comment[]
+  labels IssueLabel[]
   project Project? @relation(fields: [workspaceId, teamId, projectId], references: [workspaceId, teamId, id], onDelete: Restrict, map: "issues_workspace_team_project_fkey")
   cycle Cycle? @relation(fields: [workspaceId, teamId, cycleId], references: [workspaceId, teamId, id], onDelete: Restrict, map: "issues_workspace_team_cycle_fkey")
   projectId String? @map("project_id") @db.Uuid
@@ -271,6 +273,39 @@ model Issue {
   @@index([workspaceId, teamId, projectId], map: "issues_team_project_idx")
   @@index([workspaceId, teamId, cycleId], map: "issues_team_cycle_idx")
   @@map("issues")
+}
+
+model Label {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  teamId String @map("team_id") @db.Uuid
+  name String @db.VarChar(50)
+  normalizedName String @map("normalized_name") @db.VarChar(50)
+  color String @default("#6b7280") @db.VarChar(7)
+  version Int @default(1)
+  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(dbgenerated("clock_timestamp()")) @map("updated_at") @db.Timestamptz(6)
+  team Team @relation(fields: [workspaceId, teamId], references: [workspaceId, id], onDelete: Restrict, map: "labels_workspace_id_team_id_fkey")
+  issues IssueLabel[]
+
+  @@unique([workspaceId, teamId, id], map: "labels_workspace_id_team_id_id_key")
+  @@unique([workspaceId, teamId, normalizedName], map: "labels_workspace_id_team_id_normalized_name_key")
+  @@index([workspaceId, teamId, createdAt(sort: Desc), id(sort: Desc)], map: "labels_team_created_idx")
+  @@map("labels")
+}
+
+model IssueLabel {
+  workspaceId String @map("workspace_id") @db.Uuid
+  teamId String @map("team_id") @db.Uuid
+  issueId String @map("issue_id") @db.Uuid
+  labelId String @map("label_id") @db.Uuid
+  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(6)
+  issue Issue @relation(fields: [workspaceId, teamId, issueId], references: [workspaceId, teamId, id], onDelete: Cascade, map: "issue_labels_workspace_id_team_id_issue_id_fkey")
+  label Label @relation(fields: [workspaceId, teamId, labelId], references: [workspaceId, teamId, id], onDelete: Restrict, map: "issue_labels_workspace_id_team_id_label_id_fkey")
+
+  @@id([workspaceId, teamId, issueId, labelId], map: "issue_labels_pkey")
+  @@index([workspaceId, teamId, labelId, issueId], map: "issue_labels_label_lookup_idx")
+  @@map("issue_labels")
 }
 
 enum CommentContentFormat {

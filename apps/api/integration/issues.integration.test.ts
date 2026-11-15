@@ -102,10 +102,28 @@ test('PostgreSQL issue slice enforces tenant access, numbering, idempotency, CAS
     const counterAfterRejectedAssignee = await pool.query('SELECT next_issue_number FROM teams WHERE id = $1', [teams.public]);
     assert.equal(counterAfterRejectedAssignee.rows[0].next_issue_number, 1, 'rejected assignee must not consume a number');
 
+    // The legacy API cannot represent a custom default; fail before persisting anything.
+    const customDefault = randomUUID();
+    await pool.query("UPDATE workflow_statuses SET is_default = false WHERE team_id = $1 AND is_default", [teams.public]);
+    await pool.query("INSERT INTO workflow_statuses(id, workspace_id, team_id, key, name, category, position, is_default) VALUES ($1, $2, $3, 'custom', 'Custom', 'unstarted', 10, true)", [customDefault, workspaceId, teams.public]);
+    await expectIssueError(service.createForPrincipal(principal(users.member), {
+      workspaceId, teamId: teams.public, title: 'Unsupported default', idempotencyKey: 'custom-default',
+    }), 'issue_invalid_transition');
+    const afterUnsupported = await pool.query('SELECT next_issue_number FROM teams WHERE id = $1', [teams.public]);
+    assert.equal(afterUnsupported.rows[0].next_issue_number, 1);
+    await pool.query('UPDATE workflow_statuses SET is_default = false WHERE id = $1', [customDefault]);
+    await pool.query("UPDATE workflow_statuses SET is_default = true WHERE team_id = $1 AND key = 'backlog'", [teams.public]);
+
     const first = await service.createForPrincipal(principal(users.member), {
       workspaceId, teamId: teams.public, title: 'First issue', assigneeUserId: users.member, idempotencyKey: 'create-first',
     });
     assert.equal(first.issueNumber, 1);
+    assert.equal(first.status, 'backlog', 'legacy status must match the canonical default');
+    const canonicalDefault = await pool.query(
+      'SELECT id::text FROM workflow_statuses WHERE workspace_id = $1 AND team_id = $2 AND is_default AND NOT is_retired',
+      [workspaceId, teams.public],
+    );
+    assert.equal(first.workflowStatusId, canonicalDefault.rows[0].id);
     assert.equal(first.assigneeUserId, users.member, 'the persisted assignee ID remains part of the summary');
     assert.deepEqual((first as typeof first & { assignee?: unknown }).assignee, { id: users.member, displayName: 'Issues member' });
     const replay = await service.createForPrincipal(principal(users.member), {
@@ -188,6 +206,14 @@ test('PostgreSQL issue slice enforces tenant access, numbering, idempotency, CAS
     const beforeRace = await service.createForPrincipal(principal(users.member), {
       workspaceId, teamId: teams.public, title: 'Versioned issue', idempotencyKey: 'versioned',
     });
+    // Removing the canonical edge must make the compatibility transition fail closed.
+    const backlogId = beforeRace.workflowStatusId!;
+    const todo = await pool.query("SELECT id::text FROM workflow_statuses WHERE team_id = $1 AND key = 'todo'", [teams.public]);
+    await pool.query('DELETE FROM workflow_transitions WHERE source_status_id = $1 AND target_status_id = $2', [backlogId, todo.rows[0].id]);
+    await expectIssueError(service.transitionForPrincipal(principal(users.member), {
+      workspaceId, teamId: teams.public, issueId: beforeRace.id, expectedVersion: 1, targetStatus: 'todo',
+    }), 'issue_invalid_transition');
+    await pool.query('INSERT INTO workflow_transitions(workspace_id, team_id, source_status_id, target_status_id) VALUES ($1, $2, $3, $4)', [workspaceId, teams.public, backlogId, todo.rows[0].id]);
     const mutationRace = await Promise.allSettled([
       service.updateForPrincipal(principal(users.member), { workspaceId, teamId: teams.public, issueId: beforeRace.id, expectedVersion: 1, title: 'Winner title' }),
       service.updateForPrincipal(principal(users.member), { workspaceId, teamId: teams.public, issueId: beforeRace.id, expectedVersion: 1, priority: 'high' }),

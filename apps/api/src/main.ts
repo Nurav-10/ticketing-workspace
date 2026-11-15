@@ -24,6 +24,8 @@ import { PlanningApplicationService } from './planning/planning-service.js';
 import { PrismaPlanningRepository } from './planning/prisma-planning-repository.js';
 import { WorkflowApplicationService } from './workflows/workflow-service.js';
 import { PrismaWorkflowRepository } from './workflows/prisma-workflow-repository.js';
+import { LabelApplicationService } from './labels/label-service.js';
+import { PrismaLabelRepository } from './labels/prisma-label-repository.js';
 
 const config = loadConfig();
 const prisma = createPrismaClient(config);
@@ -62,6 +64,7 @@ const app = buildApp({
   commentService: new CommentApplicationService(new PrismaCommentRepository(prisma)),
   planningService: new PlanningApplicationService(new PrismaPlanningRepository(prisma)),
   workflowService: new WorkflowApplicationService(new PrismaWorkflowRepository(prisma), prisma),
+  labelService: new LabelApplicationService(new PrismaLabelRepository(prisma)),
 });
 const server = app.listen(config.PORT, config.HOST, () => {
   console.info(`API listening on ${config.HOST}:${config.PORT}`);

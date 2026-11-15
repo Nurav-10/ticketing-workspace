@@ -30,6 +30,8 @@ import { registerPlanningRoutes } from './planning/planning-routes.js';
 import type { PlanningService } from './planning/planning-service.js';
 import { registerWorkflowRoutes } from './workflows/workflow-routes.js';
 import type { WorkflowService } from './workflows/workflow-service.js';
+import { registerLabelRoutes } from './labels/label-routes.js';
+import type { LabelApplicationService } from './labels/label-service.js';
 
 export interface AppOptions {
   config: Config;
@@ -47,6 +49,7 @@ export interface AppOptions {
   commentService?: CommentService;
   planningService?: PlanningService;
   workflowService?: WorkflowService;
+  labelService?: LabelApplicationService;
 }
 
 export function buildApp({
@@ -65,6 +68,7 @@ export function buildApp({
   commentService,
   planningService,
   workflowService,
+  labelService,
 }: AppOptions): Express {
   const app = express();
   app.disable("x-powered-by");
@@ -129,6 +133,7 @@ export function buildApp({
   if (commentService) registerCommentRoutes(protectedRoutes, commentService);
   if (planningService) registerPlanningRoutes(protectedRoutes, planningService);
   if (workflowService) registerWorkflowRoutes(protectedRoutes, workflowService);
+  if (labelService) registerLabelRoutes(protectedRoutes, labelService);
   app.use("/api/v1", protectedRoutes);
   registerErrorHandler(app);
   return app;
