@@ -40,6 +40,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://127.0.0.1:5173}
+      ISSUE_SEARCH_CURSOR_KEY: ${ISSUE_SEARCH_CURSOR_KEY:-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE}
       DATABASE_URL: postgres://ticketing:local-development-only@db:5432/ticketing
     command: ["bun", "run", "--filter", "@ticketing/api", "dev"]
     ports:

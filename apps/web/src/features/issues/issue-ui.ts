@@ -30,7 +30,7 @@ export const activityLabel = (event: IssueDetail['activity'][number]) => {
     const fields = Array.isArray(metadata.changedFields) ? metadata.changedFields.filter((field): field is string => typeof field === 'string' && Object.hasOwn(names, field)).map((field) => names[field]) : []
     return fields.length ? `Changed ${fields.join(', ')}` : 'Issue updated'
   }
-  return ({ created: 'Issue created', archived: 'Issue archived', restored: 'Issue restored' } as Record<string, string>)[event.kind] ?? 'Issue activity'
+  return ({ created: 'Issue created', archived: 'Issue archived', restored: 'Issue restored', labels_changed: 'Labels updated' } as Record<string, string>)[event.kind] ?? 'Issue activity'
 }
 
 export type IssueDraft = { title: string; description: string; priority: IssuePriority; assigneeUserId: string | null }

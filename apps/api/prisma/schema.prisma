@@ -181,6 +181,7 @@ model Team {
   memberships TeamMembership[]
   nextIssueNumber Int @default(1) @map("next_issue_number")
   workflowVersion Int @default(1) @map("workflow_version")
+  issueQueryVersion BigInt @default(1) @map("issue_query_version") @db.BigInt
   issues Issue[]
   issueActivityEvents IssueActivityEvent[]
   outboxEvents OutboxEvent[]
@@ -227,6 +228,7 @@ enum IssueActivityKind {
   comment_deleted
   project_changed
   cycle_changed
+  labels_changed
 
   @@map("issue_activity_kind")
 }

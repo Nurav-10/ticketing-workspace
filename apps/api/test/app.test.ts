@@ -10,8 +10,9 @@ import { ApiError } from '../src/shared/api-error.js';
 import type { IssuedInvitationRecord } from '../src/invitations/invitation-repository.js';
 import type { IssueService } from '../src/issues/issue-service.js';
 import type { IssueSummary } from '../src/issues/issue-domain.js';
+import type { IssueSearchApplicationService } from '../src/search/issue-search-service.js';
 
-function dependencies(readinessQuery: () => Promise<unknown> = async () => undefined, authRoutes?: { mountPath: string; router: Router }, issueService?: IssueService) {
+function dependencies(readinessQuery: () => Promise<unknown> = async () => undefined, authRoutes?: { mountPath: string; router: Router }, issueService?: IssueService, issueSearchService?: IssueSearchApplicationService) {
   const config = loadConfig({ NODE_ENV: 'test', DATABASE_URL: 'postgres://localhost/test', PUBLIC_ORIGIN: 'https://trusted.example' });
   const authenticator = {
     configured: true,
@@ -27,9 +28,23 @@ function dependencies(readinessQuery: () => Promise<unknown> = async () => undef
   }, issue: async (): Promise<IssuedInvitationRecord & { token: string }> => { throw new Error('Invitation issue is not exercised in this app fixture'); }, listPending: async () => [], revoke: async () => undefined };
   const teamService = { listVisibleToPrincipal: async () => [], createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, listPrivateMembersForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }), listPrivateTeamsForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }) };
   const membershipService = { changeRoleForPrincipal: async () => undefined, removeMemberForPrincipal: async () => undefined, transferOwnershipForPrincipal: async () => undefined, leaveWorkspaceForPrincipal: async () => undefined };
-  const app = buildApp({ config, authenticator, readinessProbe: { query: readinessQuery }, workspaceService, invitationService, teamService, membershipService, ...(authRoutes ? { authRoutes } : {}), ...(issueService ? { issueService } : {}) });
+  const app = buildApp({ config, authenticator, readinessProbe: { query: readinessQuery }, workspaceService, invitationService, teamService, membershipService, ...(authRoutes ? { authRoutes } : {}), ...(issueService ? { issueService } : {}), ...(issueSearchService ? { issueSearchService } : {}) });
   return { config, authenticator, app };
 }
+
+test('configured issue search is composed behind the authenticated workspace boundary', async () => {
+  const calls: unknown[] = [];
+  const service = { searchForPrincipal: async (...args: unknown[]) => { calls.push(args); return { items: [] }; } } as unknown as IssueSearchApplicationService;
+  const server = await listen(dependencies(undefined, undefined, undefined, service).app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/v1/workspaces/8bb8e0ee-238c-4ba5-89ba-0f4e852861af/teams/f43515d2-0fd8-46f7-a3a4-4f1d3bc70f0a/issues/search`, {
+      method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://trusted.example' }, body: JSON.stringify({ searchTerm: 'needle' }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(((calls[0] as unknown[])[0] as { userId: string }).userId, 'user-1');
+  } finally { await server.close(); }
+});
 
 test('configured authentication routes receive request IDs and parsed cookies at their mount path', async () => {
   const router = Router();

@@ -26,7 +26,8 @@ export type IssueActivityKind =
   | 'comment_edited'
   | 'comment_deleted'
   | 'project_changed'
-  | 'cycle_changed';
+  | 'cycle_changed'
+  | 'labels_changed';
 
 /** Allowlisted history metadata. Issue title/description and arbitrary request data do not belong here. */
 export interface IssueActivityMetadata {
@@ -43,6 +44,8 @@ export interface IssueActivityMetadata {
   projectAfter?: string | null;
   cycleBefore?: string | null;
   cycleAfter?: string | null;
+  addedLabelIds?: readonly string[];
+  removedLabelIds?: readonly string[];
 }
 
 export interface IssueActivityRecord {

@@ -46,6 +46,7 @@ describe('issue activity pages', () => {
     expect(activityLabel({ kind: 'status_changed', metadata: { statusBefore: 'todo', statusAfter: 'in_progress' } })).toBe('Status changed from todo to in progress')
     expect(activityLabel({ kind: 'fields_changed', metadata: { changedFields: ['title', 'priority', 'unexpected'] } })).toBe('Changed title, priority')
     expect(activityLabel({ kind: 'status_changed', metadata: { statusBefore: '<unsafe>', statusAfter: 'done' } })).toBe('Status changed')
+    expect(activityLabel({ kind: 'labels_changed', metadata: { addedLabelIds: ['label-1'], removedLabelIds: [] } })).toBe('Labels updated')
   })
   it('appends unique events only to the same issue and cursor', () => {
     const current = { issue: { id: 'issue-1', version: 3 }, activity: [{ id: 'a' }, { id: 'b' }], nextActivityCursor: 'cursor-1' }

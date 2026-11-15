@@ -32,6 +32,10 @@ import { registerWorkflowRoutes } from './workflows/workflow-routes.js';
 import type { WorkflowService } from './workflows/workflow-service.js';
 import { registerLabelRoutes } from './labels/label-routes.js';
 import type { LabelApplicationService } from './labels/label-service.js';
+import { registerIssueSearchRoutes } from './search/issue-search-routes.js';
+import type { IssueSearchApplicationService } from './search/issue-search-service.js';
+import { registerIssueLabelRoutes } from './labels/issue-label-routes.js';
+import type { IssueLabelApplicationService } from './labels/issue-label-service.js';
 
 export interface AppOptions {
   config: Config;
@@ -50,6 +54,8 @@ export interface AppOptions {
   planningService?: PlanningService;
   workflowService?: WorkflowService;
   labelService?: LabelApplicationService;
+  issueSearchService?: IssueSearchApplicationService;
+  issueLabelService?: IssueLabelApplicationService;
 }
 
 export function buildApp({
@@ -69,6 +75,8 @@ export function buildApp({
   planningService,
   workflowService,
   labelService,
+  issueSearchService,
+  issueLabelService,
 }: AppOptions): Express {
   const app = express();
   app.disable("x-powered-by");
@@ -134,6 +142,8 @@ export function buildApp({
   if (planningService) registerPlanningRoutes(protectedRoutes, planningService);
   if (workflowService) registerWorkflowRoutes(protectedRoutes, workflowService);
   if (labelService) registerLabelRoutes(protectedRoutes, labelService);
+  if (issueSearchService) registerIssueSearchRoutes(protectedRoutes, issueSearchService);
+  if (issueLabelService) registerIssueLabelRoutes(protectedRoutes, issueLabelService);
   app.use("/api/v1", protectedRoutes);
   registerErrorHandler(app);
   return app;

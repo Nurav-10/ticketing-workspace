@@ -26,6 +26,11 @@ import { WorkflowApplicationService } from './workflows/workflow-service.js';
 import { PrismaWorkflowRepository } from './workflows/prisma-workflow-repository.js';
 import { LabelApplicationService } from './labels/label-service.js';
 import { PrismaLabelRepository } from './labels/prisma-label-repository.js';
+import { loadIssueSearchCursorKey } from './search/issue-search-config.js';
+import { IssueSearchApplicationService } from './search/issue-search-service.js';
+import { PrismaIssueSearchRepository } from './search/prisma-issue-search-repository.js';
+import { IssueLabelApplicationService } from './labels/issue-label-service.js';
+import { PrismaIssueLabelRepository } from './labels/prisma-issue-label-repository.js';
 
 const config = loadConfig();
 const prisma = createPrismaClient(config);
@@ -36,6 +41,7 @@ if (oidcConfigured && config.TRUST_PROXY === 'true') {
 const rateLimiters = oidcConfigured ? createRuntimeRateLimiters(prisma, process.env) : undefined;
 const bootstrap = loadBootstrapConfiguration(process.env);
 const metricsAuthorizer = loadMetricsAuthorizer(process.env);
+const issueSearchCursorKey = loadIssueSearchCursorKey(process.env);
 if (bootstrap && !oidcConfigured) throw new Error('Bootstrap requires configured authentication');
 if (bootstrap && process.env.RATE_LIMIT_HMAC_KEY === bootstrap.expectedGrantHash.toString('base64url')) {
   throw new Error('Bootstrap grant and rate-limit keys must differ');
@@ -65,6 +71,8 @@ const app = buildApp({
   planningService: new PlanningApplicationService(new PrismaPlanningRepository(prisma)),
   workflowService: new WorkflowApplicationService(new PrismaWorkflowRepository(prisma), prisma),
   labelService: new LabelApplicationService(new PrismaLabelRepository(prisma)),
+  issueLabelService: new IssueLabelApplicationService(new PrismaIssueLabelRepository(prisma)),
+  ...(issueSearchCursorKey ? { issueSearchService: new IssueSearchApplicationService(new PrismaIssueSearchRepository(prisma, issueSearchCursorKey)) } : {}),
 });
 const server = app.listen(config.PORT, config.HOST, () => {
   console.info(`API listening on ${config.HOST}:${config.PORT}`);

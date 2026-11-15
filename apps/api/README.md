@@ -2,6 +2,8 @@
 
 Run the API with Node 24 through the repository's Docker workflow. The API uses Express 5, Prisma ORM 7, PostgreSQL, and the `pg` driver adapter. Generate Prisma Client with `bun run prisma:generate` before typechecking or building; the generated source lives under `src/generated/prisma`. Useful scripts are `dev`, `prisma:generate`, `prisma:validate`, `build`, `start`, `migrate`, `migrate:baseline:check`, `migrate:baseline:mark`, `test`, `test:integration`, and `typecheck`.
 
+Issue search signs pagination cursors with `ISSUE_SEARCH_CURSOR_KEY`, an independent canonical base64url encoding of 32 random bytes. Production startup requires this key; all API instances must share it. In development or test, search routes are disabled if the key is absent. Compose supplies an example key only for local development; never use it in production. Rotating the key invalidates existing cursors. Search terms are sent in POST bodies and are not placed in URLs.
+
 `migrate` runs `prisma migrate deploy`. Use it against an empty disposable database or one whose Prisma history is already initialized. It never resets a database. Do not use `prisma migrate dev` or `migrate reset` against development data.
 
 ## Existing development database
