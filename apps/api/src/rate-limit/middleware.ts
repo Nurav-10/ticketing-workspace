@@ -25,6 +25,8 @@ export interface AuthLimiterHandlers {
 export interface InvitationLimiterHandlers {
   issue: RequestHandler;
   redeem: RequestHandler;
+  list: RequestHandler;
+  search: RequestHandler;
 }
 
 const TOO_MANY_REQUESTS = {
@@ -114,6 +116,14 @@ export function createInvitationRateLimiters(
     redeem: createRateLimitMiddleware(limiter, { dimensions: [
       { operation: 'invitation.redeem.ip', identifier: ip },
       { operation: 'invitation.redeem.token', identifier: token },
+    ] }),
+    list: createRateLimitMiddleware(limiter, { dimensions: [
+      { operation: 'invitation.list.ip', identifier: ip },
+      { operation: 'invitation.list.actor', identifier: principal },
+    ] }),
+    search: createRateLimitMiddleware(limiter, { dimensions: [
+      { operation: 'invitation.search.ip', identifier: ip },
+      { operation: 'invitation.search.actor', identifier: principal },
     ] }),
   };
 }

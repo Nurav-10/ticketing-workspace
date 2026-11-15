@@ -24,6 +24,12 @@ import { ApiMetrics, createHttpMetricsMiddleware, createMetricsRouter, type Metr
 import { registerIssueRoutes } from './issues/issue-routes.js';
 import type { IssueService } from './issues/issue-service.js';
 import { registerIssueAssigneeRoutes, type IssueAssigneeService } from './issues/issue-assignees.js';
+import { registerCommentRoutes } from './comments/comment-routes.js';
+import type { CommentService } from './comments/comment-service.js';
+import { registerPlanningRoutes } from './planning/planning-routes.js';
+import type { PlanningService } from './planning/planning-service.js';
+import { registerWorkflowRoutes } from './workflows/workflow-routes.js';
+import type { WorkflowService } from './workflows/workflow-service.js';
 
 export interface AppOptions {
   config: Config;
@@ -34,10 +40,13 @@ export interface AppOptions {
   teamService: TeamLister & TeamAdministrator;
   membershipService: WorkspaceMembershipAdministrator;
   authRoutes?: { mountPath: string; router: Router };
-  invitationRateLimiters?: { issue: RequestHandler; redeem: RequestHandler };
+  invitationRateLimiters?: { issue: RequestHandler; redeem: RequestHandler; list: RequestHandler; search: RequestHandler };
   metricsAuthorizer?: MetricsAuthorizer;
   issueService?: IssueService;
   issueAssigneeService?: IssueAssigneeService;
+  commentService?: CommentService;
+  planningService?: PlanningService;
+  workflowService?: WorkflowService;
 }
 
 export function buildApp({
@@ -53,6 +62,9 @@ export function buildApp({
   metricsAuthorizer,
   issueService,
   issueAssigneeService,
+  commentService,
+  planningService,
+  workflowService,
 }: AppOptions): Express {
   const app = express();
   app.disable("x-powered-by");
@@ -67,7 +79,17 @@ export function buildApp({
     app.use(createHttpMetricsMiddleware(metrics));
     app.use(createMetricsRouter(metrics, metricsAuthorizer));
   }
+  // Protected resources can contain tenant data, including in error responses.
+  // Set this before body parsing and authentication so failures are covered too.
+  app.use(['/api/v1/workspaces', '/api/v1/invitations'], (_request, response, next) => {
+    response.setHeader('cache-control', 'no-store');
+    next();
+  });
   app.use(cookieParser());
+  // A 20,000-character description can occupy 120,000 JSON bytes when every
+  // character needs a six-byte `\uXXXX` escape. Keep that larger bound scoped
+  // to issue requests; the API's general JSON limit remains 32kb.
+  app.use('/api/v1/workspaces/:workspaceId/teams/:teamId/issues', express.json({ limit: '128kb', strict: true }));
   app.use(express.json({ limit: "32kb", strict: true }));
   registerHealthRoutes(app, readinessProbe);
   registerOpenApiRoute(app);
@@ -94,6 +116,8 @@ export function buildApp({
   protectedRoutes.use("/invitations", protect);
   if (invitationRateLimiters) {
     protectedRoutes.post('/workspaces/:workspaceId/invitations', invitationRateLimiters.issue);
+    protectedRoutes.get('/workspaces/:workspaceId/invitations', invitationRateLimiters.list);
+    protectedRoutes.post('/workspaces/:workspaceId/invitations/search', invitationRateLimiters.search);
     protectedRoutes.post('/invitations/redeem', invitationRateLimiters.redeem);
   }
   registerWorkspaceRoutes(protectedRoutes, workspaceService);
@@ -102,6 +126,9 @@ export function buildApp({
   registerMembershipRoutes(protectedRoutes, membershipService);
   if (issueService) registerIssueRoutes(protectedRoutes, issueService);
   if (issueAssigneeService) registerIssueAssigneeRoutes(protectedRoutes, issueAssigneeService);
+  if (commentService) registerCommentRoutes(protectedRoutes, commentService);
+  if (planningService) registerPlanningRoutes(protectedRoutes, planningService);
+  if (workflowService) registerWorkflowRoutes(protectedRoutes, workflowService);
   app.use("/api/v1", protectedRoutes);
   registerErrorHandler(app);
   return app;

@@ -1,0 +1,3 @@
+.access-actions { margin: 1rem 1.5rem 0; }
+.access-actions summary { width: fit-content; cursor: pointer; color: var(--color-text-secondary); }
+.access-actions summary:hover { color: var(--color-text-primary); }

@@ -12,14 +12,15 @@ const workspaceId = '8bb8e0ee-238c-4ba5-89ba-0f4e852861af';
 const invitationId = 'f43515d2-0fd8-46f7-a3a4-4f1d3bc70f0a';
 const principal: Principal = { userId: '49a03ed2-7eb3-4c00-a8e1-519c70306427', sessionId: 'session-1' };
 
-function appWith(service: InvitationAdministrator) {
+function appWith(service: InvitationAdministrator, invitationRateLimiters?: { issue: import('express').RequestHandler; redeem: import('express').RequestHandler; list: import('express').RequestHandler; search: import('express').RequestHandler }) {
   return buildApp({
     config: loadConfig({ NODE_ENV: 'test', DATABASE_URL: 'postgres://localhost/test', PUBLIC_ORIGIN: 'https://trusted.example' }),
     authenticator: { configured: true, authenticate: async () => principal },
     readinessProbe: { query: async () => undefined },
     workspaceService: { listForPrincipal: async () => [] },
     invitationService: service,
-    teamService: { listVisibleToPrincipal: async () => [], createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); } },
+    invitationRateLimiters,
+    teamService: { listVisibleToPrincipal: async () => [], createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, listPrivateMembersForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }), listPrivateTeamsForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }) },
     membershipService: { changeRoleForPrincipal: async () => undefined, removeMemberForPrincipal: async () => undefined, transferOwnershipForPrincipal: async () => undefined, leaveWorkspaceForPrincipal: async () => undefined }
   });
 }
@@ -114,7 +115,7 @@ test('issue and revoke routes remain protected by the configured session authent
     readinessProbe: { query: async () => undefined },
     workspaceService: { listForPrincipal: async () => [] },
     invitationService: fakeService(),
-    teamService: { listVisibleToPrincipal: async () => [], createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); } },
+    teamService: { listVisibleToPrincipal: async () => [], createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, listPrivateMembersForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }), listPrivateTeamsForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }) },
     membershipService: { changeRoleForPrincipal: async () => undefined, removeMemberForPrincipal: async () => undefined, transferOwnershipForPrincipal: async () => undefined, leaveWorkspaceForPrincipal: async () => undefined }
   });
   const server = await listen(app);
@@ -127,8 +128,18 @@ test('issue and revoke routes remain protected by the configured session authent
     const revoke = await fetch(`${server.baseUrl}/api/v1/workspaces/${workspaceId}/invitations/${invitationId}`, {
       method: 'DELETE', headers: { origin: 'https://trusted.example' }
     });
+    const list = await fetch(`${server.baseUrl}/api/v1/workspaces/${workspaceId}/invitations`, {
+      headers: { origin: 'https://trusted.example' }
+    });
+    const search = await fetch(`${server.baseUrl}/api/v1/workspaces/${workspaceId}/invitations/search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://trusted.example' },
+      body: JSON.stringify({ email: 'person@example.test' })
+    });
     assert.equal(issue.status, 401);
     assert.equal(revoke.status, 401);
+    assert.equal(list.status, 401);
+    assert.equal(search.status, 401);
   } finally { await server.close(); }
 });
 
@@ -144,5 +155,112 @@ test('revoke route validates identifiers and returns no invitation token or body
     assert.equal(response.status, 204);
     assert.equal(await response.text(), '');
     assert.deepEqual(received, { principal, workspaceId, invitationId });
+  } finally { await server.close(); }
+});
+
+test('pending invitation list is bounded, non-cacheable, and returns only safe metadata', async () => {
+  let received: { principal: Principal; workspaceId: string; limit: number; email?: string } | undefined;
+  const service = fakeService();
+  Object.assign(service, {
+    listPending: async (receivedPrincipal: Principal, requestedWorkspaceId: string, limit: number, email?: string) => {
+      received = { principal: receivedPrincipal, workspaceId: requestedWorkspaceId, limit, email };
+      return [{
+        id: invitationId,
+        email: 'person@example.test',
+        role: 'member' as const,
+        expiresAt: new Date('2026-11-21T12:00:00.000Z')
+      }];
+    }
+  });
+  const server = await listen(appWith(service));
+  try {
+    const response = await fetch(`${server.baseUrl}/api/v1/workspaces/${workspaceId}/invitations?limit=100`, {
+      headers: { origin: 'https://trusted.example' }
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(received, { principal, workspaceId, limit: 100, email: undefined });
+    assert.deepEqual(await response.json(), {
+      data: [{ id: invitationId, email: 'person@example.test', role: 'member', expiresAt: '2026-11-21T12:00:00.000Z' }]
+    });
+  } finally { await server.close(); }
+});
+
+test('exact-email recovery uses strict JSON and returns non-cacheable safe metadata', async () => {
+  let received: { principal: Principal; workspaceId: string; limit: number; email?: string } | undefined;
+  const service = fakeService();
+  Object.assign(service, {
+    listPending: async (receivedPrincipal: Principal, requestedWorkspaceId: string, limit: number, email?: string) => {
+      received = { principal: receivedPrincipal, workspaceId: requestedWorkspaceId, limit, email };
+      return [{ id: invitationId, email: 'person@example.test', role: 'member' as const, expiresAt: new Date('2026-11-21T12:00:00.000Z') }];
+    }
+  });
+  const server = await listen(appWith(service));
+  try {
+    const response = await fetch(`${server.baseUrl}/api/v1/workspaces/${workspaceId}/invitations/search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://trusted.example' },
+      body: JSON.stringify({ email: ' PERSON@Example.Test ' })
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(received, { principal, workspaceId, limit: 1, email: 'person@example.test' });
+    const body = await response.text();
+    assert.equal(body.includes('token'), false);
+    assert.deepEqual(JSON.parse(body), {
+      data: [{ id: invitationId, email: 'person@example.test', role: 'member', expiresAt: '2026-11-21T12:00:00.000Z' }]
+    });
+    const rejectedOrigin = await fetch(`${server.baseUrl}/api/v1/workspaces/${workspaceId}/invitations/search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://attacker.example' },
+      body: JSON.stringify({ email: 'person@example.test' })
+    });
+    assert.equal(rejectedOrigin.status, 403);
+  } finally { await server.close(); }
+});
+
+test('recovery list and search routes invoke their separate rate limiters after authentication', async () => {
+  const called: string[] = [];
+  const limiter = (name: string) => ((request, _response, next) => {
+    called.push(`${name}:${request.principal?.userId}`);
+    next();
+  }) as import('express').RequestHandler;
+  const server = await listen(appWith(fakeService(), {
+    issue: limiter('issue'), redeem: limiter('redeem'), list: limiter('list'), search: limiter('search')
+  }));
+  try {
+    await fetch(`${server.baseUrl}/api/v1/workspaces/${workspaceId}/invitations`, { headers: { origin: 'https://trusted.example' } });
+    await fetch(`${server.baseUrl}/api/v1/workspaces/${workspaceId}/invitations/search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://trusted.example' },
+      body: JSON.stringify({ email: 'person@example.test' })
+    });
+    assert.deepEqual(called, [`list:${principal.userId}`, `search:${principal.userId}`]);
+  } finally { await server.close(); }
+});
+
+test('pending invitation recovery rejects invalid limits and malformed workspace scope before service calls', async () => {
+  let calls = 0;
+  const service = fakeService();
+  Object.assign(service, { listPending: async () => { calls++; return []; } });
+  const server = await listen(appWith(service));
+  try {
+    for (const path of [
+      `/api/v1/workspaces/${workspaceId}/invitations?limit=0`,
+      `/api/v1/workspaces/${workspaceId}/invitations?limit=101`,
+      `/api/v1/workspaces/${workspaceId}/invitations?limit=abc`,
+      `/api/v1/workspaces/${workspaceId}/invitations?email=person%40example.test`,
+      '/api/v1/workspaces/not-a-uuid/invitations'
+    ]) {
+      const response = await fetch(`${server.baseUrl}${path}`, { headers: { origin: 'https://trusted.example' } });
+      assert.equal(response.status, 400);
+    }
+    const search = await fetch(`${server.baseUrl}/api/v1/workspaces/${workspaceId}/invitations/search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://trusted.example' },
+      body: JSON.stringify({ email: 'not-an-email', extra: 'discarded?' })
+    });
+    assert.equal(search.status, 400);
+    assert.equal(calls, 0);
   } finally { await server.close(); }
 });

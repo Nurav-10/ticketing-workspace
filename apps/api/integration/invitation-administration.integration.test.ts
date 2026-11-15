@@ -117,6 +117,34 @@ test('issuance enforces the current role and returns a high-entropy token while 
     assert.deepEqual(Object.keys(invite).sort(), ['email', 'expiresAt', 'id', 'role', 'token']);
     assert.notDeepEqual(stored.rows[0]?.token_hash, Buffer.from(invite.token, 'ascii'));
 
+    const hiddenAdminInviteSearch = await requestAs(admin.id, `/api/v1/workspaces/${workspaceId}/invitations/search`, 'POST', { email: invitee.email });
+    assert.equal(hiddenAdminInviteSearch.status, 200);
+    assert.deepEqual(hiddenAdminInviteSearch.body.data, []);
+    const adminIssueAgainstHiddenInvite = await requestAs(admin.id, `/api/v1/workspaces/${workspaceId}/invitations`, 'POST', { email: invitee.email, role: 'member' });
+    assert.equal(adminIssueAgainstHiddenInvite.status, 409);
+    assert.equal(adminIssueAgainstHiddenInvite.body.error.code, 'invitation_conflict');
+    assert.equal(adminIssueAgainstHiddenInvite.body.error.message.includes(invitee.email), false);
+    const ownerIssueAgainstAdminInvite = await requestAs(owner.id, `/api/v1/workspaces/${workspaceId}/invitations`, 'POST', { email: invitee.email, role: 'member' });
+    assert.equal(ownerIssueAgainstAdminInvite.status, 409);
+    assert.equal(ownerIssueAgainstAdminInvite.body.error.code, 'invitation_exists');
+
+    const adminIssueAgainstExistingMember = await requestAs(admin.id, `/api/v1/workspaces/${workspaceId}/invitations`, 'POST', { email: member.email, role: 'member' });
+    assert.equal(adminIssueAgainstExistingMember.status, 409);
+    assert.equal(adminIssueAgainstExistingMember.body.error.code, 'invitation_conflict');
+    assert.equal(adminIssueAgainstExistingMember.body.error.message.includes(member.email), false);
+    const ownerIssueAgainstExistingMember = await requestAs(owner.id, `/api/v1/workspaces/${workspaceId}/invitations`, 'POST', { email: member.email, role: 'member' });
+    assert.equal(ownerIssueAgainstExistingMember.status, 409);
+    assert.equal(ownerIssueAgainstExistingMember.body.error.code, 'already_a_member');
+
+    const visibleMemberInvite = await requestAs(owner.id, `/api/v1/workspaces/${workspaceId}/invitations`, 'POST', { email: `${randomUUID()}@example.test`, role: 'member' });
+    assert.equal(visibleMemberInvite.status, 201);
+    const adminIssueAgainstVisibleMemberInvite = await requestAs(admin.id, `/api/v1/workspaces/${workspaceId}/invitations`, 'POST', { email: visibleMemberInvite.body.data.email, role: 'member' });
+    assert.equal(adminIssueAgainstVisibleMemberInvite.status, 409);
+    assert.equal(adminIssueAgainstVisibleMemberInvite.body.error.code, 'invitation_conflict');
+    const ownerIssueAgainstMemberInvite = await requestAs(owner.id, `/api/v1/workspaces/${workspaceId}/invitations`, 'POST', { email: visibleMemberInvite.body.data.email, role: 'member' });
+    assert.equal(ownerIssueAgainstMemberInvite.status, 409);
+    assert.equal(ownerIssueAgainstMemberInvite.body.error.code, 'invitation_exists');
+
     const ownerMemberIssued = await requestAs(owner.id, `/api/v1/workspaces/${workspaceId}/invitations`, 'POST', { email: `${randomUUID()}@example.test`, role: 'member' });
     assert.equal(ownerMemberIssued.status, 201);
     const adminMemberIssued = await requestAs(admin.id, `/api/v1/workspaces/${workspaceId}/invitations`, 'POST', { email: `${randomUUID()}@example.test`, role: 'member' });
@@ -153,6 +181,61 @@ test('revocation is tenant-scoped and idempotent, while redeemed invitations con
     assert.equal(redeem.status, 200);
     assert.equal((await requestAs(recipient.id, '/api/v1/invitations/redeem', 'POST', { token: redeemedInvite.body.data.token })).status, 404);
     assert.equal((await requestAs(ownerA.id, `/api/v1/workspaces/${workspaceA}/invitations/${redeemedInvite.body.data.id}`, 'DELETE')).status, 409);
+  } finally { await cleanup(workspaces, users); }
+});
+
+test('pending invitation recovery is bounded, workspace-authorized, and enables safe revoke and reissue', async () => {
+  const users: string[] = [];
+  const workspaces: string[] = [];
+  try {
+    const owner = await createUser(); users.push(owner.id);
+    const admin = await createUser(); users.push(admin.id);
+    const member = await createUser(); users.push(member.id);
+    const outsider = await createUser(); users.push(outsider.id);
+    const workspaceId = await createWorkspace(owner.id); workspaces.push(workspaceId);
+    await addMember(workspaceId, admin.id, 'admin');
+    await addMember(workspaceId, member.id, 'member');
+
+    const path = `/api/v1/workspaces/${workspaceId}/invitations`;
+    const lostResponseInvite = await requestAs(owner.id, path, 'POST', { email: `${randomUUID()}@example.test`, role: 'member' });
+    const secondInvite = await requestAs(owner.id, path, 'POST', { email: `${randomUUID()}@example.test`, role: 'admin' });
+    assert.equal(lostResponseInvite.status, 201);
+    assert.equal(secondInvite.status, 201);
+
+    const ownerList = await requestAs(owner.id, `${path}?limit=1`);
+    assert.equal(ownerList.status, 200);
+    assert.equal(ownerList.body.data.length, 1);
+    assert.ok([lostResponseInvite.body.data.id, secondInvite.body.data.id].includes(ownerList.body.data[0].id));
+
+    const exactEmailList = await requestAs(admin.id, `${path}/search`, 'POST', { email: ` ${lostResponseInvite.body.data.email.toUpperCase()} ` });
+    assert.equal(exactEmailList.status, 200);
+    assert.equal(exactEmailList.body.data.length, 1);
+    assert.equal(exactEmailList.body.data[0].id, lostResponseInvite.body.data.id);
+
+    const adminList = await requestAs(admin.id, path);
+    assert.equal(adminList.status, 200);
+    assert.equal(adminList.body.data.length, 1);
+    for (const invite of adminList.body.data) {
+      assert.deepEqual(Object.keys(invite).sort(), ['email', 'expiresAt', 'id', 'role']);
+      assert.equal(invite.role, 'member');
+      assert.equal(JSON.stringify(invite).includes('token'), false);
+      assert.equal(JSON.stringify(invite).includes('tokenHash'), false);
+    }
+    const ownerAllInvites = await requestAs(owner.id, path);
+    assert.equal(ownerAllInvites.status, 200);
+    assert.equal(ownerAllInvites.body.data.length, 2);
+    assert.deepEqual(ownerAllInvites.body.data.map((invite: { role: string }) => invite.role).sort(), ['admin', 'member']);
+    assert.equal((await requestAs(member.id, path)).status, 403);
+    assert.equal((await requestAs(outsider.id, path)).status, 404);
+    assert.equal((await requestAs(owner.id, `${path}?limit=101`)).status, 400);
+
+    // Recover only the safe ID from the authorized list, then revoke and reissue.
+    const recovered = exactEmailList.body.data[0] as { id: string; email: string } | undefined;
+    assert.ok(recovered);
+    assert.equal((await requestAs(admin.id, `${path}/${recovered.id}`, 'DELETE')).status, 204);
+    const replacement = await requestAs(admin.id, path, 'POST', { email: recovered.email, role: 'member' });
+    assert.equal(replacement.status, 201);
+    assert.notEqual(replacement.body.data.id, recovered.id);
   } finally { await cleanup(workspaces, users); }
 });
 

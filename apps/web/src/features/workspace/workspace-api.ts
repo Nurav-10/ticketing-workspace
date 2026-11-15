@@ -12,6 +12,8 @@ export type TeamSummary = {
   visibility: 'workspace' | 'private'
 }
 
+export type CreateTeamInput = { name: string; key: string; visibility: TeamSummary['visibility'] }
+
 type ApiEnvelope<T> = { data: T }
 
 export class ApiRequestError extends Error {
@@ -59,6 +61,17 @@ export async function getTeams(workspaceId: string): Promise<TeamSummary[]> {
     throw new ApiRequestError('The API returned invalid team data')
   }
   return result.data
+}
+
+export async function createTeam(workspaceId: string, input: CreateTeamInput): Promise<TeamSummary> {
+  const result = await request<ApiEnvelope<TeamSummary>>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/teams`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+  })
+  const team = result.data
+  if (!team || typeof team.id !== 'string' || typeof team.name !== 'string' || typeof team.key !== 'string' || (team.visibility !== 'workspace' && team.visibility !== 'private')) {
+    throw new ApiRequestError('The API returned invalid team data')
+  }
+  return team
 }
 
 export function signOut(): Promise<void> {

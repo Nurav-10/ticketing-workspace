@@ -16,23 +16,41 @@ export interface AuthorizedIssueListQuery extends IssueActorScope, Omit<Normaliz
 export interface AuthorizedIssueMutation extends IssueActorScope, IssueMutationInput {}
 export interface AuthorizedIssuePatch extends IssueActorScope, NormalizedIssuePatch {}
 
-export type IssueActivityKind = 'created' | 'fields_changed' | 'status_changed' | 'archived' | 'restored';
+export type IssueActivityKind =
+  | 'created'
+  | 'fields_changed'
+  | 'status_changed'
+  | 'archived'
+  | 'restored'
+  | 'comment_created'
+  | 'comment_edited'
+  | 'comment_deleted'
+  | 'project_changed'
+  | 'cycle_changed';
 
 /** Allowlisted history metadata. Issue title/description and arbitrary request data do not belong here. */
 export interface IssueActivityMetadata {
-  changedFields?: readonly ('title' | 'description' | 'priority' | 'assigneeUserId')[];
+  changedFields?: readonly ('title' | 'description' | 'priority' | 'assigneeUserId' | 'projectId' | 'cycleId')[];
   statusBefore?: IssueStatus;
   statusAfter?: IssueStatus;
   priorityBefore?: string;
   priorityAfter?: string;
   assigneeBefore?: string | null;
   assigneeAfter?: string | null;
+  commentId?: string;
+  version?: number;
+  projectBefore?: string | null;
+  projectAfter?: string | null;
+  cycleBefore?: string | null;
+  cycleAfter?: string | null;
 }
 
 export interface IssueActivityRecord {
   id: string;
   issueId: string;
   actorUserId: string;
+  /** Current display information is omitted when the actor no longer has team access. */
+  actor: { id: string; displayName: string } | null;
   kind: IssueActivityKind;
   metadata: IssueActivityMetadata;
   createdAt: Date;

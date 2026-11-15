@@ -9,6 +9,24 @@ function requireUuid(value: string | string[] | undefined): string {
   return value;
 }
 
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 100;
+
+function pageOptions(request: Request): { limit: number; cursor?: string } {
+  const limitValue = request.query.limit;
+  let limit = DEFAULT_PAGE_SIZE;
+  if (limitValue !== undefined) {
+    if (typeof limitValue !== 'string' || !/^[1-9][0-9]*$/.test(limitValue)) {
+      throw new ApiError(400, 'invalid_request', 'Request validation failed');
+    }
+    limit = Number(limitValue);
+    if (!Number.isSafeInteger(limit) || limit > MAX_PAGE_SIZE) throw new ApiError(400, 'invalid_request', 'Request validation failed');
+  }
+  const cursorValue = request.query.cursor;
+  if (cursorValue === undefined) return { limit };
+  return { limit, cursor: requireUuid(cursorValue as string | string[] | undefined) };
+}
+
 function requirePrincipal(request: Request) {
   if (!request.principal) throw new ApiError(401, 'unauthenticated', 'Authentication required');
   return request.principal;
@@ -54,6 +72,27 @@ export function registerTeamRoutes(app: Router, service: TeamLister & TeamAdmini
       targetUserId: requireUuid(request.params.userId)
     });
     response.status(204).end();
+  });
+
+  app.get('/workspaces/:workspaceId/private-teams', async (request: Request, response: Response) => {
+    const principal = requirePrincipal(request);
+    const page = await service.listPrivateTeamsForPrincipal(principal, {
+      workspaceId: requireUuid(request.params.workspaceId),
+      ...pageOptions(request)
+    });
+    response.set('Cache-Control', 'no-store');
+    response.json({ data: page.data, pageInfo: { hasMore: page.hasMore, nextCursor: page.nextCursor } });
+  });
+
+  app.get('/workspaces/:workspaceId/teams/:teamId/members', async (request: Request, response: Response) => {
+    const principal = requirePrincipal(request);
+    const page = await service.listPrivateMembersForPrincipal(principal, {
+      workspaceId: requireUuid(request.params.workspaceId),
+      teamId: requireUuid(request.params.teamId),
+      ...pageOptions(request)
+    });
+    response.set('Cache-Control', 'no-store');
+    response.json({ data: page.data, pageInfo: { hasMore: page.hasMore, nextCursor: page.nextCursor } });
   });
 
   app.delete('/workspaces/:workspaceId/teams/:teamId/members/:userId', async (request: Request, response: Response) => {

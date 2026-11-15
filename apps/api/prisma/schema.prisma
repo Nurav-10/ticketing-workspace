@@ -39,6 +39,9 @@ model User {
   createdIssues      Issue[]               @relation("IssueCreator")
   issueActivityEvents IssueActivityEvent[]  @relation("IssueActivityActor")
   issueIdempotencyRecords IssueIdempotencyRecord[] @relation("IssueIdempotencyActor")
+  authoredComments Comment[] @relation("CommentAuthor")
+  createdProjects Project[]
+  createdCycles Cycle[]
 
   @@map("users")
 }
@@ -108,7 +111,13 @@ model Workspace {
   issues      Issue[]
   issueActivityEvents IssueActivityEvent[]
   outboxEvents OutboxEvent[]
+  outboxSequence WorkspaceOutboxSequence?
   issueIdempotencyRecords IssueIdempotencyRecord[]
+  comments Comment[]
+  projects Project[]
+  cycles Cycle[]
+  workflowStatuses WorkflowStatus[]
+  workflowTransitions WorkflowTransition[]
 
   @@map("workspaces")
 }
@@ -171,9 +180,15 @@ model Team {
   workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "teams_workspace_id_fkey")
   memberships TeamMembership[]
   nextIssueNumber Int @default(1) @map("next_issue_number")
+  workflowVersion Int @default(1) @map("workflow_version")
   issues Issue[]
   issueActivityEvents IssueActivityEvent[]
   outboxEvents OutboxEvent[]
+  comments Comment[]
+  projects Project[]
+  cycles Cycle[]
+  workflowStatuses WorkflowStatus[]
+  workflowTransitions WorkflowTransition[]
 
   @@unique([workspaceId, id], map: "teams_workspace_id_id_key")
   @@unique([workspaceId, key], map: "teams_workspace_id_key_key")
@@ -206,6 +221,11 @@ enum IssueActivityKind {
   status_changed
   archived
   restored
+  comment_created
+  comment_edited
+  comment_deleted
+  project_changed
+  cycle_changed
 
   @@map("issue_activity_kind")
 }
@@ -218,6 +238,7 @@ model Issue {
   title String @db.VarChar(250)
   description String? @db.VarChar(20000)
   status IssueStatus @default(backlog)
+  workflowStatusId String? @map("workflow_status_id") @db.Uuid
   priority IssuePriority @default(none)
   assigneeUserId String? @map("assignee_user_id") @db.Uuid
   createdByUserId String @map("created_by_user_id") @db.Uuid
@@ -227,20 +248,170 @@ model Issue {
   archivedAt DateTime? @map("archived_at") @db.Timestamptz(6)
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, map: "issues_workspace_id_fkey")
   team Team @relation(fields: [workspaceId, teamId], references: [workspaceId, id], onDelete: Restrict, map: "issues_workspace_id_team_id_fkey")
+  workflowStatus WorkflowStatus? @relation(fields: [workspaceId, teamId, workflowStatusId], references: [workspaceId, teamId, id], onDelete: Restrict, map: "issues_workspace_id_team_id_workflow_status_id_fkey")
   assignee User? @relation("IssueAssignee", fields: [assigneeUserId], references: [id], onDelete: Restrict, map: "issues_assignee_user_id_fkey")
   creator User @relation("IssueCreator", fields: [createdByUserId], references: [id], onDelete: Restrict, map: "issues_created_by_user_id_fkey")
   activityEvents IssueActivityEvent[]
   outboxEvents OutboxEvent[]
   idempotencyRecords IssueIdempotencyRecord[]
+  comments Comment[]
+  project Project? @relation(fields: [workspaceId, teamId, projectId], references: [workspaceId, teamId, id], onDelete: Restrict, map: "issues_workspace_team_project_fkey")
+  cycle Cycle? @relation(fields: [workspaceId, teamId, cycleId], references: [workspaceId, teamId, id], onDelete: Restrict, map: "issues_workspace_team_cycle_fkey")
+  projectId String? @map("project_id") @db.Uuid
+  cycleId String? @map("cycle_id") @db.Uuid
 
   @@unique([teamId, issueNumber], map: "issues_team_id_issue_number_key")
   @@unique([workspaceId, teamId, id], map: "issues_workspace_id_team_id_id_key")
   @@unique([workspaceId, id], map: "issues_workspace_id_id_key")
   @@index([workspaceId, teamId, createdAt(sort: Desc), id(sort: Desc)], map: "issues_team_created_at_id_idx")
   @@index([workspaceId, teamId, status, createdAt(sort: Desc), id(sort: Desc)], map: "issues_team_status_created_at_id_idx")
+  @@index([workspaceId, teamId, workflowStatusId], map: "issues_team_workflow_status_idx")
   @@index([workspaceId, teamId, priority, createdAt(sort: Desc), id(sort: Desc)], map: "issues_team_priority_created_at_id_idx")
   @@index([workspaceId, assigneeUserId], map: "issues_workspace_assignee_idx")
+  @@index([workspaceId, teamId, projectId], map: "issues_team_project_idx")
+  @@index([workspaceId, teamId, cycleId], map: "issues_team_cycle_idx")
   @@map("issues")
+}
+
+enum CommentContentFormat {
+  plain_text
+
+  @@map("comment_content_format")
+}
+
+model Comment {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  teamId String @map("team_id") @db.Uuid
+  issueId String @map("issue_id") @db.Uuid
+  authorUserId String @map("author_user_id") @db.Uuid
+  body String? @db.VarChar(10000)
+  contentFormat CommentContentFormat @default(plain_text) @map("content_format")
+  version Int @default(1)
+  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(dbgenerated("clock_timestamp()")) @map("updated_at") @db.Timestamptz(6)
+  editedAt DateTime? @map("edited_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, map: "comments_workspace_id_fkey")
+  team Team @relation(fields: [workspaceId, teamId], references: [workspaceId, id], onDelete: Restrict, map: "comments_workspace_id_team_id_fkey")
+  issue Issue @relation(fields: [workspaceId, teamId, issueId], references: [workspaceId, teamId, id], onDelete: Restrict, map: "comments_workspace_id_team_id_issue_id_fkey")
+  author User @relation("CommentAuthor", fields: [authorUserId], references: [id], onDelete: Restrict, map: "comments_author_user_id_fkey")
+
+  @@index([workspaceId, teamId, issueId, createdAt, id], map: "comments_issue_created_id_idx")
+  @@index([authorUserId, createdAt], map: "comments_author_idx")
+  @@map("comments")
+}
+
+enum ProjectStatus {
+  planned
+  in_progress
+  completed
+  canceled
+
+  @@map("project_status")
+}
+
+enum CycleStatus {
+  planned
+  active
+  completed
+
+  @@map("cycle_status")
+}
+
+model Project {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  teamId String @map("team_id") @db.Uuid
+  name String @db.VarChar(120)
+  description String? @db.VarChar(5000)
+  status ProjectStatus @default(planned)
+  startAt DateTime? @map("start_at") @db.Timestamptz(6)
+  targetAt DateTime? @map("target_at") @db.Timestamptz(6)
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(dbgenerated("clock_timestamp()")) @map("updated_at") @db.Timestamptz(6)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, map: "projects_workspace_id_fkey")
+  team Team @relation(fields: [workspaceId, teamId], references: [workspaceId, id], onDelete: Restrict, map: "projects_workspace_team_fkey")
+  creator User @relation(fields: [createdByUserId], references: [id], onDelete: Restrict, map: "projects_creator_id_fkey")
+  issues Issue[]
+  @@unique([workspaceId, teamId, id], map: "projects_workspace_team_id_key")
+  @@index([workspaceId, teamId, status, createdAt(sort: Desc)], map: "projects_team_status_created_idx")
+  @@map("projects")
+}
+
+model Cycle {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  teamId String @map("team_id") @db.Uuid
+  name String @db.VarChar(120)
+  startAt DateTime @map("start_at") @db.Timestamptz(6)
+  endAt DateTime @map("end_at") @db.Timestamptz(6)
+  status CycleStatus @default(planned)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(dbgenerated("clock_timestamp()")) @map("updated_at") @db.Timestamptz(6)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, map: "cycles_workspace_id_fkey")
+  team Team @relation(fields: [workspaceId, teamId], references: [workspaceId, id], onDelete: Restrict, map: "cycles_workspace_team_fkey")
+  creator User @relation(fields: [createdByUserId], references: [id], onDelete: Restrict, map: "cycles_creator_id_fkey")
+  issues Issue[]
+  @@unique([workspaceId, teamId, id], map: "cycles_workspace_team_id_key")
+  @@index([workspaceId, teamId, startAt], map: "cycles_team_start_idx")
+  @@map("cycles")
+}
+
+enum WorkflowStatusCategory {
+  backlog
+  unstarted
+  started
+  completed
+  canceled
+
+  @@map("workflow_status_category")
+}
+
+model WorkflowStatus {
+  id             String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId    String                 @map("workspace_id") @db.Uuid
+  teamId         String                 @map("team_id") @db.Uuid
+  key            String                 @db.VarChar(64)
+  name           String                 @db.VarChar(100)
+  category       WorkflowStatusCategory
+  position       Int
+  isDefault      Boolean                @default(false) @map("is_default")
+  isRetired      Boolean                @default(false) @map("is_retired")
+  createdAt      DateTime               @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime               @default(dbgenerated("clock_timestamp()")) @map("updated_at") @db.Timestamptz(6)
+
+  workspace      Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "workflow_statuses_workspace_id_fkey")
+  team           Team                   @relation(fields: [workspaceId, teamId], references: [workspaceId, id], onDelete: Cascade, map: "workflow_statuses_workspace_id_team_id_fkey")
+  issues         Issue[]
+  outgoingTransitions WorkflowTransition[] @relation("WorkflowTransitionSource")
+  incomingTransitions WorkflowTransition[] @relation("WorkflowTransitionTarget")
+
+  @@unique([teamId, key], map: "workflow_statuses_team_id_key_key")
+  @@unique([workspaceId, teamId, id], map: "workflow_statuses_workspace_id_team_id_id_key")
+  @@index([workspaceId, teamId, isRetired, position], map: "workflow_statuses_team_retired_position_idx")
+  @@map("workflow_statuses")
+}
+
+model WorkflowTransition {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId    String         @map("workspace_id") @db.Uuid
+  teamId         String         @map("team_id") @db.Uuid
+  sourceStatusId String         @map("source_status_id") @db.Uuid
+  targetStatusId String         @map("target_status_id") @db.Uuid
+  createdAt      DateTime       @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(3)
+
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "workflow_transitions_workspace_id_fkey")
+  team           Team           @relation(fields: [workspaceId, teamId], references: [workspaceId, id], onDelete: Cascade, map: "workflow_transitions_workspace_id_team_id_fkey")
+  sourceStatus   WorkflowStatus @relation("WorkflowTransitionSource", fields: [workspaceId, teamId, sourceStatusId], references: [workspaceId, teamId, id], onDelete: Cascade, map: "workflow_transitions_source_status_fkey")
+  targetStatus   WorkflowStatus @relation("WorkflowTransitionTarget", fields: [workspaceId, teamId, targetStatusId], references: [workspaceId, teamId, id], onDelete: Cascade, map: "workflow_transitions_target_status_fkey")
+
+  @@unique([teamId, sourceStatusId, targetStatusId], map: "workflow_transitions_team_source_target_key")
+  @@index([teamId, sourceStatusId], map: "workflow_transitions_team_source_idx")
+  @@map("workflow_transitions")
 }
 
 model IssueActivityEvent {
@@ -274,12 +445,30 @@ model OutboxEvent {
   deliveredAt DateTime? @map("delivered_at") @db.Timestamptz(6)
   retryCount Int @default(0) @map("retry_count")
   nextAttemptAt DateTime @default(dbgenerated("clock_timestamp()")) @map("next_attempt_at") @db.Timestamptz(6)
+  claimedBy String? @map("claimed_by") @db.VarChar(255)
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  deadLetteredAt DateTime? @map("dead_lettered_at") @db.Timestamptz(6)
+  deadLetterReason String? @map("dead_letter_reason")
+  lastError String? @map("last_error")
+  workspaceSequence BigInt? @map("workspace_sequence")
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, map: "outbox_events_workspace_id_fkey")
   team Team @relation(fields: [workspaceId, teamId], references: [workspaceId, id], onDelete: Restrict, map: "outbox_events_workspace_id_team_id_fkey")
   issue Issue @relation(fields: [workspaceId, teamId, issueId], references: [workspaceId, teamId, id], onDelete: Restrict, map: "outbox_events_workspace_id_team_id_issue_id_fkey")
 
   @@index([nextAttemptAt, createdAt], map: "outbox_events_pending_idx")
+  @@index([nextAttemptAt, createdAt], map: "outbox_events_claim_idx")
+  @@index([leaseExpiresAt], map: "outbox_events_lease_idx")
+  @@index([workspaceId, deadLetteredAt], map: "outbox_events_dead_letter_idx")
   @@map("outbox_events")
+}
+
+model WorkspaceOutboxSequence {
+  workspaceId String @id @map("workspace_id") @db.Uuid
+  nextSequence BigInt @default(1) @map("next_sequence")
+  updatedAt DateTime @default(dbgenerated("clock_timestamp()")) @map("updated_at") @db.Timestamptz(6)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, map: "workspace_outbox_sequences_workspace_id_fkey")
+
+  @@map("workspace_outbox_sequences")
 }
 
 model IssueIdempotencyRecord {

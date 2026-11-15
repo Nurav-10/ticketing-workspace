@@ -18,6 +18,12 @@ import { loadMetricsAuthorizer } from './observability/config.js';
 import { IssueApplicationService } from './issues/issue-service.js';
 import { PrismaIssueRepository } from './issues/prisma-issue-repository.js';
 import { IssueAssigneeApplicationService, PrismaIssueAssigneeRepository } from './issues/issue-assignees.js';
+import { CommentApplicationService } from './comments/comment-service.js';
+import { PrismaCommentRepository } from './comments/prisma-comment-repository.js';
+import { PlanningApplicationService } from './planning/planning-service.js';
+import { PrismaPlanningRepository } from './planning/prisma-planning-repository.js';
+import { WorkflowApplicationService } from './workflows/workflow-service.js';
+import { PrismaWorkflowRepository } from './workflows/prisma-workflow-repository.js';
 
 const config = loadConfig();
 const prisma = createPrismaClient(config);
@@ -52,7 +58,10 @@ const app = buildApp({
   teamService: new TeamService(new PrismaTeamRepository(prisma)),
   membershipService: new WorkspaceMembershipService(new PrismaMembershipRepository(prisma)),
   issueService: new IssueApplicationService(new PrismaIssueRepository(prisma)),
-  issueAssigneeService: new IssueAssigneeApplicationService(new PrismaIssueAssigneeRepository(prisma))
+  issueAssigneeService: new IssueAssigneeApplicationService(new PrismaIssueAssigneeRepository(prisma)),
+  commentService: new CommentApplicationService(new PrismaCommentRepository(prisma)),
+  planningService: new PlanningApplicationService(new PrismaPlanningRepository(prisma)),
+  workflowService: new WorkflowApplicationService(new PrismaWorkflowRepository(prisma), prisma),
 });
 const server = app.listen(config.PORT, config.HOST, () => {
   console.info(`API listening on ${config.HOST}:${config.PORT}`);

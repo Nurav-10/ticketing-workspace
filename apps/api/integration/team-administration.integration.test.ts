@@ -109,6 +109,7 @@ test('team creation and private membership administration enforce current worksp
     await pool.query("UPDATE users SET status = 'active' WHERE id = $1", [adminId]);
     privateTeamId = (privateCreate.body as { data: { id: string } }).data.id;
     workspaceTeamId = (workspaceCreate.body as { data: { id: string } }).data.id;
+    const adminTeamId = (adminCreate.body as { data: { id: string } }).data.id;
     otherTeamId = randomUUID();
     await pool.query(
       'INSERT INTO teams(id, workspace_id, name, key, visibility) VALUES ($1, $2, $3, $4, $5)',
@@ -116,7 +117,31 @@ test('team creation and private membership administration enforce current worksp
     );
 
     const privatePath = `${teamsPath}/${privateTeamId}/members/${memberId}`;
+    const rosterPath = `${teamsPath}/${privateTeamId}/members`;
+    const initialRoster = await callAs(adminId, `${rosterPath}?limit=2`) as { status: number; body: { data: Array<{ id: string; email: string; displayName: string; role: string; isTeamMember: boolean }>; pageInfo: { hasMore: boolean; nextCursor: string | null } } };
+    assert.equal(initialRoster.status, 200);
+    assert.equal(initialRoster.body.data.length, 2);
+    assert.ok(initialRoster.body.data.every(({ isTeamMember }) => !isTeamMember));
+    assert.equal(initialRoster.body.pageInfo.hasMore, true);
+    assert.equal(initialRoster.body.pageInfo.nextCursor, initialRoster.body.data[1]?.id);
+    const nextRoster = await callAs(adminId, `${rosterPath}?limit=2&cursor=${initialRoster.body.pageInfo.nextCursor}`) as { status: number; body: { data: Array<{ id: string }>; pageInfo: { hasMore: boolean; nextCursor: string | null } } };
+    assert.equal(nextRoster.status, 200);
+    assert.equal(nextRoster.body.data.length, 2);
+    assert.equal(nextRoster.body.pageInfo.hasMore, false);
+    assert.equal(nextRoster.body.pageInfo.nextCursor, null);
+    assert.deepEqual([...initialRoster.body.data, ...nextRoster.body.data].map(({ id }) => id).sort(), [adminId, disabledId, memberId, ownerId].sort());
+    assert.equal((await callAs(memberId, rosterPath)).status, 403, 'ordinary members cannot enumerate private-team membership');
+    assert.equal((await callAs(ownerId, `${teamsPath}/${workspaceTeamId}/members`)).status, 409, 'the roster endpoint is private-team only');
+    assert.equal((await callAs(ownerId, `/api/v1/workspaces/${workspaceId}/teams/${otherTeamId}/members`)).status, 404, 'team identifiers cannot cross workspace boundaries');
+    const privateTeams = await callAs(adminId, `/api/v1/workspaces/${workspaceId}/private-teams`) as { status: number; body: { data: Array<{ id: string; visibility: string }>; pageInfo: { hasMore: boolean; nextCursor: string | null } } };
+    assert.equal(privateTeams.status, 200);
+    assert.deepEqual(privateTeams.body.data.map(({ id }) => id).sort(), [privateTeamId, adminTeamId].sort());
+    assert.ok(privateTeams.body.data.every(({ visibility }) => visibility === 'private'));
+    assert.equal(privateTeams.body.pageInfo.hasMore, false);
+    assert.equal((await callAs(memberId, `/api/v1/workspaces/${workspaceId}/private-teams`)).status, 403, 'ordinary members cannot enumerate private-team metadata');
     assert.equal((await callAs(adminId, privatePath, 'POST')).status, 204);
+    const updatedRoster = await callAs(ownerId, rosterPath) as { status: number; body: { data: Array<{ id: string; isTeamMember: boolean }> } };
+    assert.equal(updatedRoster.body.data.find(({ id }) => id === memberId)?.isTeamMember, true);
     const memberListing = await callAs(memberId, teamsPath);
     assert.equal(memberListing.status, 200);
     assert.ok((memberListing.body as { data: Array<{ id: string }> }).data.some(({ id }) => id === privateTeamId));

@@ -14,7 +14,7 @@ const issueId = '24fba2dd-8131-4c53-a8b4-07ab988da002';
 const actorId = '49a03ed2-7eb3-4c00-a8e1-519c70306427';
 const issue: IssueSummary = {
   id: issueId, workspaceId, teamId, issueNumber: 1, key: 'ENG-1', title: 'Example',
-  description: null, status: 'backlog', priority: 'none', assigneeUserId: null,
+  description: null, status: 'backlog', priority: 'none', assigneeUserId: null, assignee: null,
   createdByUserId: actorId, version: 1, createdAt: new Date('2026-01-01T00:00:00Z'),
   updatedAt: new Date('2026-01-01T00:00:00Z'), archivedAt: null,
 };
@@ -48,6 +48,7 @@ test('issue routes use the authenticated principal, reject injected fields, and 
     assert.equal(created.status, 201);
     assert.equal(created.headers.get('etag'), '"1"');
     assert.equal(created.headers.get('cache-control'), 'no-store');
+    assert.equal((await created.json() as { data: IssueSummary }).data.assignee, null);
     assert.equal((calls[0] as { principal: { userId: string } }).principal.userId, actorId);
     const weak = await fetch(`${root}/${issueId}`, { method: 'PATCH', headers: { 'content-type': 'application/json', 'if-match': 'W/"1"' }, body: JSON.stringify({ title: 'Changed' }) });
     assert.equal(weak.status, 400);

@@ -10,6 +10,11 @@ export type IssueStatus = typeof ISSUE_STATUSES[number];
 export const ISSUE_PRIORITIES = ['none', 'low', 'medium', 'high', 'urgent'] as const;
 export type IssuePriority = typeof ISSUE_PRIORITIES[number];
 
+export interface IssueAssigneeSummary {
+  id: string;
+  displayName: string;
+}
+
 /** Built-in Phase 3 workflow. Phase 4 may replace this with an injected workflow port. */
 export const ISSUE_TRANSITIONS: Readonly<Record<IssueStatus, readonly IssueStatus[]>> = {
   backlog: ['todo', 'canceled'],
@@ -34,8 +39,11 @@ export interface IssueSummary {
   title: string;
   description: string | null;
   status: IssueStatus;
+  workflowStatusId?: string | null;
   priority: IssuePriority;
   assigneeUserId: string | null;
+  /** Display information only while the assignee has current access to this issue's team. */
+  assignee: IssueAssigneeSummary | null;
   createdByUserId: string;
   version: number;
   createdAt: Date;
@@ -165,16 +173,16 @@ function validateTitle(value: unknown): string {
   if (typeof value !== 'string') return invalid('Title is required');
   const title = value.trim();
   const length = codePointLength(title);
-  if (length < 1 || length > ISSUE_TITLE_MAX_LENGTH) {
-    return invalid(`Title must contain 1 to ${ISSUE_TITLE_MAX_LENGTH} characters`);
+  if (title.includes('\0') || length < 1 || length > ISSUE_TITLE_MAX_LENGTH) {
+    return invalid(`Title must contain 1 to ${ISSUE_TITLE_MAX_LENGTH} characters and no null characters`);
   }
   return title;
 }
 
 function validateDescription(value: unknown): string | null {
   if (value === undefined || value === null) return null;
-  if (typeof value !== 'string' || codePointLength(value) > ISSUE_DESCRIPTION_MAX_LENGTH) {
-    return invalid(`Description must contain at most ${ISSUE_DESCRIPTION_MAX_LENGTH} characters`);
+  if (typeof value !== 'string' || value.includes('\0') || codePointLength(value) > ISSUE_DESCRIPTION_MAX_LENGTH) {
+    return invalid(`Description must contain at most ${ISSUE_DESCRIPTION_MAX_LENGTH} characters and no null characters`);
   }
   return value;
 }

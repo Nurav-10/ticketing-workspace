@@ -4,7 +4,7 @@ A container-first foundation for a multi-workspace issue tracker. The product an
 
 **Backend migration in progress:** the Express and Prisma implementation and the commands below have not yet passed their full Docker verification. Do not reset or delete an existing database volume to make migration commands work; see the [migration plan](plans/01-express-prisma-migration.md).
 
-The current milestone is a foundation, not a finished ticketing product. A real identity provider has not been configured. Protected endpoints fail closed until authentication is configured. Issue editing is not yet implemented.
+The current milestone is an in-progress ticketing product. A real identity provider has not been configured; protected endpoints fail closed until authentication is configured. The issue UI supports creation, editing, status changes and archive/restore for an authorized team. Workspace owners and administrators can create teams, manage private-team membership, and issue or revoke pending invitations; invited users can enter an invitation code to join. These flows still require real-provider and browser verification.
 
 ## Requirements
 
@@ -50,6 +50,7 @@ Build a clean image and run the workspace checks:
 docker compose build api
 docker compose run --rm --no-deps api bun run typecheck
 docker compose run --rm --no-deps api bun run test
+docker compose run --rm --no-deps api bun test apps/web/src
 docker compose run --rm --no-deps api bun run build
 docker compose run --rm --no-deps api bun audit
 ```

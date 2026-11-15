@@ -32,11 +32,11 @@ export function useWorkspaceContext() {
     if (!workspace || access.workspaces !== 'ready') return
     let active = true
     setTeams([])
-    setSelectedTeamId('')
     setTeamAccess('loading')
     void getTeams(workspace.id).then((result) => {
       if (!active) return
       setTeams(result)
+      setSelectedTeamId((current) => result.some((team) => team.id === current) ? current : '')
       setTeamAccess('ready')
     }).catch((error: unknown) => {
       if (!active) return

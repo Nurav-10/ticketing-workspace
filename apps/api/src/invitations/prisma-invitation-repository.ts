@@ -33,6 +33,13 @@ interface ExistingInvitation {
   expires_at: Date;
 }
 
+interface PendingInvitation {
+  id: string;
+  email: string;
+  role: 'admin' | 'member';
+  expires_at: Date;
+}
+
 interface LockedRevokeInvitation {
   id: string;
   role: 'admin' | 'member';
@@ -80,6 +87,9 @@ export class PrismaInvitationRepository implements InvitationRepository {
         ORDER BY u.id
         FOR UPDATE OF u`;
       if (accounts.some((account) => account.is_member)) {
+        if (actor.role === 'admin') {
+          throw new ApiError(409, 'invitation_conflict', 'The invitation could not be created');
+        }
         throw new ApiError(409, 'already_a_member', 'This email already belongs to a workspace member');
       }
 
@@ -96,6 +106,9 @@ export class PrismaInvitationRepository implements InvitationRepository {
       const checkedAt = nowRows[0]?.now;
       if (!checkedAt) throw new Error('Database clock query returned no timestamp.');
       if (existing.some((invitation) => invitation.expires_at > checkedAt)) {
+        if (actor.role === 'admin') {
+          throw new ApiError(409, 'invitation_conflict', 'The invitation could not be created');
+        }
         throw new ApiError(409, 'invitation_exists', 'A pending invitation already exists for this email');
       }
       const expiredIds = existing.filter((invitation) => invitation.expires_at <= checkedAt).map(({ id }) => id);
@@ -178,6 +191,39 @@ export class PrismaInvitationRepository implements InvitationRepository {
         eventKind: 'workspace_invitation_revoked',
         metadata: { invitation_id: invitation.id }
       });
+    }, { maxWait: 5_000, timeout: 10_000 });
+  }
+
+  async listPending({ workspaceId, actorUserId, limit, email }: {
+    workspaceId: string;
+    actorUserId: string;
+    limit: number;
+    email?: string;
+  }): Promise<IssuedInvitationRecord[]> {
+    return this.prisma.$transaction(async (transaction) => {
+      await this.lockWorkspace(transaction, workspaceId);
+      const actor = await this.lockIssuerMembership(transaction, workspaceId, actorUserId);
+      if (actor.role !== 'owner' && actor.role !== 'admin') {
+        throw new ApiError(403, 'forbidden', 'You cannot list invitations for this workspace');
+      }
+
+      const rows = await transaction.$queryRaw<PendingInvitation[]>`
+        SELECT id::text AS id, email, role, expires_at
+        FROM invitations
+        WHERE workspace_id = ${workspaceId}::uuid
+          AND redeemed_at IS NULL
+          AND revoked_at IS NULL
+          AND expires_at > clock_timestamp()
+          AND (${actor.role === 'owner'} OR role = 'member')
+          AND (${email ?? null}::text IS NULL OR lower(btrim(email)) = ${email ?? null})
+        ORDER BY created_at DESC, id DESC
+        LIMIT ${limit}`;
+      return rows.map(({ id, email, role, expires_at }) => ({
+        id,
+        email,
+        role,
+        expiresAt: expires_at
+      }));
     }, { maxWait: 5_000, timeout: 10_000 });
   }
 

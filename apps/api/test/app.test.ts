@@ -8,8 +8,10 @@ import { loadConfig } from '../src/config/config.js';
 import { UnconfiguredAuthenticator, assertProductionAuthenticator } from '../src/auth/authenticator.js';
 import { ApiError } from '../src/shared/api-error.js';
 import type { IssuedInvitationRecord } from '../src/invitations/invitation-repository.js';
+import type { IssueService } from '../src/issues/issue-service.js';
+import type { IssueSummary } from '../src/issues/issue-domain.js';
 
-function dependencies(readinessQuery: () => Promise<unknown> = async () => undefined, authRoutes?: { mountPath: string; router: Router }) {
+function dependencies(readinessQuery: () => Promise<unknown> = async () => undefined, authRoutes?: { mountPath: string; router: Router }, issueService?: IssueService) {
   const config = loadConfig({ NODE_ENV: 'test', DATABASE_URL: 'postgres://localhost/test', PUBLIC_ORIGIN: 'https://trusted.example' });
   const authenticator = {
     configured: true,
@@ -22,10 +24,10 @@ function dependencies(readinessQuery: () => Promise<unknown> = async () => undef
   const invitationService = { redeem: async (_principal: unknown, token: string) => {
     if (token === 'valid-' + 'x'.repeat(40)) return { workspaceId: 'workspace-1', role: 'member' as const };
     throw new ApiError(404, 'invitation_unavailable', 'Invitation is unavailable');
-  }, issue: async (): Promise<IssuedInvitationRecord & { token: string }> => { throw new Error('Invitation issue is not exercised in this app fixture'); }, revoke: async () => undefined };
-  const teamService = { listVisibleToPrincipal: async () => [], createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); } };
+  }, issue: async (): Promise<IssuedInvitationRecord & { token: string }> => { throw new Error('Invitation issue is not exercised in this app fixture'); }, listPending: async () => [], revoke: async () => undefined };
+  const teamService = { listVisibleToPrincipal: async () => [], createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, listPrivateMembersForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }), listPrivateTeamsForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }) };
   const membershipService = { changeRoleForPrincipal: async () => undefined, removeMemberForPrincipal: async () => undefined, transferOwnershipForPrincipal: async () => undefined, leaveWorkspaceForPrincipal: async () => undefined };
-  const app = buildApp({ config, authenticator, readinessProbe: { query: readinessQuery }, workspaceService, invitationService, teamService, membershipService, ...(authRoutes ? { authRoutes } : {}) });
+  const app = buildApp({ config, authenticator, readinessProbe: { query: readinessQuery }, workspaceService, invitationService, teamService, membershipService, ...(authRoutes ? { authRoutes } : {}), ...(issueService ? { issueService } : {}) });
   return { config, authenticator, app };
 }
 
@@ -90,8 +92,8 @@ test('health probes do not depend on the identity provider', async () => {
     authenticator: { configured: true, authenticate: async () => { authenticationAttempts++; throw new Error('identity provider unavailable'); } },
     readinessProbe: { query: async () => undefined },
     workspaceService: { listForPrincipal: async () => [] },
-    invitationService: { redeem: async () => ({ workspaceId: 'w', role: 'member' as const }), issue: async (): Promise<IssuedInvitationRecord & { token: string }> => { throw new Error('not exercised'); }, revoke: async () => undefined },
-    teamService: { listVisibleToPrincipal: async () => [], createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); } },
+    invitationService: { redeem: async () => ({ workspaceId: 'w', role: 'member' as const }), issue: async (): Promise<IssuedInvitationRecord & { token: string }> => { throw new Error('not exercised'); }, listPending: async () => [], revoke: async () => undefined },
+    teamService: { listVisibleToPrincipal: async () => [], createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, listPrivateMembersForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }), listPrivateTeamsForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }) },
     membershipService: { changeRoleForPrincipal: async () => undefined, removeMemberForPrincipal: async () => undefined, transferOwnershipForPrincipal: async () => undefined, leaveWorkspaceForPrincipal: async () => undefined }
   });
   const server = await listen(app);
@@ -111,14 +113,15 @@ test('workspace route requires an authenticated principal', async () => {
     authenticator: new UnconfiguredAuthenticator(),
     readinessProbe: { query: async () => undefined },
     workspaceService: { listForPrincipal: async () => [] },
-    invitationService: { redeem: async () => ({ workspaceId: 'w', role: 'member' as const }), issue: async (): Promise<IssuedInvitationRecord & { token: string }> => { throw new Error('not exercised'); }, revoke: async () => undefined },
-    teamService: { listVisibleToPrincipal: async () => [], createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); } },
+    invitationService: { redeem: async () => ({ workspaceId: 'w', role: 'member' as const }), issue: async (): Promise<IssuedInvitationRecord & { token: string }> => { throw new Error('not exercised'); }, listPending: async () => [], revoke: async () => undefined },
+    teamService: { listVisibleToPrincipal: async () => [], createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, listPrivateMembersForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }), listPrivateTeamsForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }) },
     membershipService: { changeRoleForPrincipal: async () => undefined, removeMemberForPrincipal: async () => undefined, transferOwnershipForPrincipal: async () => undefined, leaveWorkspaceForPrincipal: async () => undefined }
   });
   const server = await listen(app);
   try {
     const response = await fetch(`${server.baseUrl}/api/v1/workspaces`);
     assert.equal(response.status, 401);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
     assert.equal((await response.json() as { error: { code: string } }).error.code, 'unauthenticated');
   } finally { await server.close(); }
 });
@@ -129,7 +132,72 @@ test('workspace service receives the verified principal and returns its scoped r
   try {
     const response = await fetch(`${server.baseUrl}/api/v1/workspaces`);
     assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
     assert.deepEqual((await response.json() as { data: unknown }).data, [{ id: 'workspace-1', name: 'Product', slug: 'product', role: 'member' }]);
+  } finally { await server.close(); }
+});
+
+test('issue creation accepts a maximum-length description with JSON-escaped control characters', async () => {
+  const description = '\u0001'.repeat(20_000);
+  let receivedDescription: string | null | undefined;
+  const issue: IssueSummary = {
+    id: '24fba2dd-8131-4c53-a8b4-07ab988da002', workspaceId: '8bb8e0ee-238c-4ba5-89ba-0f4e852861af',
+    teamId: 'f43515d2-0fd8-46f7-a3a4-4f1d3bc70f0a', issueNumber: 1, key: 'ENG-1', title: 'Example',
+    description, status: 'backlog', priority: 'none', assigneeUserId: null, assignee: null,
+    createdByUserId: 'user-1', version: 1, createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'), archivedAt: null,
+  };
+  const issueService = {
+    createForPrincipal: async (_principal: unknown, input: { description?: string | null }) => {
+      receivedDescription = input.description;
+      return issue;
+    },
+  } as unknown as IssueService;
+  const { app } = dependencies(undefined, undefined, issueService);
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/v1/workspaces/${issue.workspaceId}/teams/${issue.teamId}/issues`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://trusted.example', 'idempotency-key': 'description-limit-test' },
+      body: JSON.stringify({ title: 'Example', description }),
+    });
+    assert.equal(response.status, 201);
+    assert.equal(receivedDescription, description);
+    assert.equal((await response.json() as { data: { description: string } }).data.description, description);
+  } finally { await server.close(); }
+});
+
+test('issue requests exceeding the 128kb JSON limit return the standard too-large error', async () => {
+  let serviceCalled = false;
+  const issueService = {
+    createForPrincipal: async () => { serviceCalled = true; throw new Error('must not reach the issue service'); },
+  } as unknown as IssueService;
+  const { app } = dependencies(undefined, undefined, issueService);
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/v1/workspaces/8bb8e0ee-238c-4ba5-89ba-0f4e852861af/teams/f43515d2-0fd8-46f7-a3a4-4f1d3bc70f0a/issues`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://trusted.example', 'idempotency-key': 'oversized-description-test' },
+      body: JSON.stringify({ title: 'Example', description: '\u0001'.repeat(22_000) }),
+    });
+    assert.equal(response.status, 413);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal((await response.json() as { error: { code: string } }).error.code, 'request_too_large');
+    assert.equal(serviceCalled, false);
+  } finally { await server.close(); }
+});
+
+test('non-issue JSON requests retain the 32kb body limit', async () => {
+  const { app } = dependencies();
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/v1/invitations/redeem`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://trusted.example' },
+      body: JSON.stringify({ token: 'x'.repeat(40_000) }),
+    });
+    assert.equal(response.status, 413);
+    assert.equal((await response.json() as { error: { code: string } }).error.code, 'request_too_large');
   } finally { await server.close(); }
 });
 

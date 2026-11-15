@@ -4,14 +4,16 @@ export type Issue = {
   id: string; workspaceId: string; teamId: string; issueNumber: number; key: string; title: string
   description: string | null; status: IssueStatus; priority: IssuePriority; assigneeUserId: string | null
   createdByUserId: string; version: number; createdAt: string; updatedAt: string; archivedAt: string | null
+  assignee?: { id: string; displayName: string } | null
 }
-export type IssueDetail = { issue: Issue; activity: Array<{ id: string; kind: string; metadata: Record<string, unknown>; createdAt: string }> }
+export type IssueDetail = { issue: Issue; activity: Array<{ id: string; kind: string; metadata: Record<string, unknown>; createdAt: string; actor?: { id: string; displayName: string } | null }>; nextActivityCursor?: string }
 export type IssuePage = { items: Issue[]; nextCursor?: string }
 type Envelope<T> = { data: T }
 type ApiErrorBody = { error?: { code?: string; message?: string; requestId?: string } }
 
 export class IssueApiError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) { super(message); this.name = 'IssueApiError' }
+  get isVersionConflict() { return this.status === 409 && this.code === 'version_conflict' }
 }
 const root = (workspaceId: string, teamId: string) => `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/teams/${encodeURIComponent(teamId)}/issues`
 async function request<T>(path: string, init: RequestInit = {}): Promise<{ data: T; etag: string | null }> {
@@ -36,8 +38,9 @@ export async function listIssues(workspaceId: string, teamId: string, signal?: A
   const query = queryString ? `?${queryString}` : ''
   return (await request<IssuePage>(`${root(workspaceId, teamId)}${query}`, { signal })).data
 }
-export async function getIssue(workspaceId: string, teamId: string, id: string, signal?: AbortSignal): Promise<IssueDetail> {
-  return (await request<IssueDetail>(`${root(workspaceId, teamId)}/${encodeURIComponent(id)}`, { signal })).data
+export async function getIssue(workspaceId: string, teamId: string, id: string, signal?: AbortSignal, activityCursor?: string): Promise<IssueDetail> {
+  const query = activityCursor ? `?${new URLSearchParams({ activityCursor }).toString()}` : ''
+  return (await request<IssueDetail>(`${root(workspaceId, teamId)}/${encodeURIComponent(id)}${query}`, { signal })).data
 }
 export async function createIssue(workspaceId: string, teamId: string, input: { title: string; description: string | null; priority: IssuePriority; assigneeUserId: string | null }, idempotencyKey: string): Promise<Issue> {
   return (await request<Issue>(root(workspaceId, teamId), { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(input) })).data

@@ -38,6 +38,8 @@ test('PostgreSQL issue slice enforces tenant access, numbering, idempotency, CAS
   const users = {
     owner: await createUser('owner'),
     member: await createUser('member'),
+    privateViewer: await createUser('private-viewer'),
+    privateAssignee: await createUser('private-assignee'),
     outsider: await createUser('outsider'),
     invalidAssignee: await createUser('invalid-assignee'),
   };
@@ -60,8 +62,8 @@ test('PostgreSQL issue slice enforces tenant access, numbering, idempotency, CAS
       );
       await setup.query(
         `INSERT INTO workspace_memberships(workspace_id, user_id, role) VALUES
-          ($1, $2, 'owner'), ($1, $3, 'member'), ($4, $5, 'owner')`,
-        [workspaceId, users.owner, users.member, otherWorkspaceId, users.outsider],
+          ($1, $2, 'owner'), ($1, $3, 'member'), ($1, $6, 'member'), ($1, $7, 'member'), ($4, $5, 'owner')`,
+        [workspaceId, users.owner, users.member, otherWorkspaceId, users.outsider, users.privateViewer, users.privateAssignee],
       );
       await setup.query(
         `INSERT INTO teams(id, workspace_id, name, key, visibility) VALUES
@@ -71,8 +73,8 @@ test('PostgreSQL issue slice enforces tenant access, numbering, idempotency, CAS
         [teams.public, workspaceId, keys.public, teams.private, keys.private, teams.otherWorkspace, otherWorkspaceId, keys.otherWorkspace],
       );
       await setup.query(
-        'INSERT INTO team_memberships(workspace_id, team_id, user_id) VALUES ($1, $2, $3)',
-        [workspaceId, teams.private, users.member],
+        'INSERT INTO team_memberships(workspace_id, team_id, user_id) VALUES ($1, $2, $3), ($1, $2, $4), ($1, $2, $5)',
+        [workspaceId, teams.private, users.member, users.privateViewer, users.privateAssignee],
       );
       await setup.query('COMMIT');
     } catch (error) {
@@ -85,7 +87,7 @@ test('PostgreSQL issue slice enforces tenant access, numbering, idempotency, CAS
       (error: unknown) => error instanceof ApiError && error.statusCode === 404,
     );
     const privateAssignees = await assignees.listForPrincipal(principal(users.member), { workspaceId, teamId: teams.private });
-    assert.deepEqual(privateAssignees.items.map((person) => person.id), [users.member]);
+    assert.deepEqual(privateAssignees.items.map((person) => person.id).sort(), [users.member, users.privateViewer, users.privateAssignee].sort());
     assert.deepEqual(Object.keys(privateAssignees.items[0]!).sort(), ['displayName', 'id']);
 
     // Workspace owners have no implicit access to private-team content.
@@ -101,11 +103,13 @@ test('PostgreSQL issue slice enforces tenant access, numbering, idempotency, CAS
     assert.equal(counterAfterRejectedAssignee.rows[0].next_issue_number, 1, 'rejected assignee must not consume a number');
 
     const first = await service.createForPrincipal(principal(users.member), {
-      workspaceId, teamId: teams.public, title: 'First issue', idempotencyKey: 'create-first',
+      workspaceId, teamId: teams.public, title: 'First issue', assigneeUserId: users.member, idempotencyKey: 'create-first',
     });
     assert.equal(first.issueNumber, 1);
+    assert.equal(first.assigneeUserId, users.member, 'the persisted assignee ID remains part of the summary');
+    assert.deepEqual((first as typeof first & { assignee?: unknown }).assignee, { id: users.member, displayName: 'Issues member' });
     const replay = await service.createForPrincipal(principal(users.member), {
-      workspaceId, teamId: teams.public, title: 'First issue', idempotencyKey: 'create-first',
+      workspaceId, teamId: teams.public, title: 'First issue', assigneeUserId: users.member, idempotencyKey: 'create-first',
     });
     assert.equal(replay.id, first.id, 'same key and canonical payload returns the original issue');
     await expectIssueError(service.createForPrincipal(principal(users.member), {
@@ -128,16 +132,20 @@ test('PostgreSQL issue slice enforces tenant access, numbering, idempotency, CAS
       });
       for (const item of page.items) {
         assert.ok(!seen.has(item.id), 'pagination must not repeat issues');
+        if (item.id === first.id) assert.deepEqual(item.assignee, { id: users.member, displayName: 'Issues member' });
         seen.add(item.id);
       }
       cursor = page.nextCursor;
     } while (cursor);
     assert.equal(seen.size, 9, 'pagination must not skip issues created in the same millisecond');
 
-    const privateIssue = await service.createForPrincipal(principal(users.member), {
-      workspaceId, teamId: teams.private, title: 'Private team issue', idempotencyKey: 'private-member-create',
+    const privateIssue = await service.createForPrincipal(principal(users.privateAssignee), {
+      workspaceId, teamId: teams.private, title: 'Private team issue', assigneeUserId: users.privateAssignee, idempotencyKey: 'private-member-create',
     });
     assert.equal(privateIssue.issueNumber, 1, 'numbering is per team');
+    assert.deepEqual((privateIssue as typeof privateIssue & { assignee?: unknown }).assignee, { id: users.privateAssignee, displayName: 'Issues private-assignee' });
+    const beforePrivateActorLeft = await service.getForPrincipal(principal(users.privateViewer), { workspaceId, teamId: teams.private, issueId: privateIssue.id });
+    assert.deepEqual((beforePrivateActorLeft.activity[0] as typeof beforePrivateActorLeft.activity[number] & { actor?: unknown }).actor, { id: users.privateAssignee, displayName: 'Issues private-assignee' });
     await expectIssueError(service.getForPrincipal(principal(users.owner), {
       workspaceId, teamId: teams.private, issueId: privateIssue.id,
     }), 'issue_not_found');
@@ -147,6 +155,35 @@ test('PostgreSQL issue slice enforces tenant access, numbering, idempotency, CAS
     await expectIssueError(service.getForPrincipal(principal(users.outsider), {
       workspaceId, teamId: teams.public, issueId: first.id,
     }), 'issue_not_found');
+
+    // Once a private assignee leaves the team, the historical ID remains but
+    // the response must not disclose their display name to current team viewers.
+    await pool.query('DELETE FROM team_memberships WHERE workspace_id = $1 AND team_id = $2 AND user_id = $3', [workspaceId, teams.private, users.privateAssignee]);
+    const afterPrivateAssigneeLeft = await service.getForPrincipal(principal(users.privateViewer), {
+      workspaceId, teamId: teams.private, issueId: privateIssue.id,
+    });
+    assert.equal(afterPrivateAssigneeLeft.issue.assigneeUserId, users.privateAssignee);
+    assert.equal((afterPrivateAssigneeLeft.issue as typeof afterPrivateAssigneeLeft.issue & { assignee?: unknown }).assignee, null);
+    assert.equal((afterPrivateAssigneeLeft.activity[0] as typeof afterPrivateAssigneeLeft.activity[number] & { actor?: unknown }).actor, null, 'former private members do not expose names through history');
+
+    // Workspace membership loss and account deactivation also suppress the
+    // display summary while retaining the issue's stable assigned-user ID.
+    const revokedAssignment = await service.createForPrincipal(principal(users.privateAssignee), {
+      workspaceId, teamId: teams.public, title: 'Will lose workspace access', assigneeUserId: users.privateAssignee, idempotencyKey: 'revoked-assignee',
+    });
+    await pool.query('DELETE FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2', [workspaceId, users.privateAssignee]);
+    const afterWorkspaceRemoval = await service.getForPrincipal(principal(users.member), { workspaceId, teamId: teams.public, issueId: revokedAssignment.id });
+    assert.equal(afterWorkspaceRemoval.issue.assigneeUserId, users.privateAssignee);
+    assert.equal((afterWorkspaceRemoval.issue as typeof afterWorkspaceRemoval.issue & { assignee?: unknown }).assignee, null);
+    assert.equal((afterWorkspaceRemoval.activity[0] as typeof afterWorkspaceRemoval.activity[number] & { actor?: unknown }).actor, null, 'former workspace members do not expose names through history');
+    const inactiveAssignment = await service.createForPrincipal(principal(users.privateViewer), {
+      workspaceId, teamId: teams.public, title: 'Will be deactivated', assigneeUserId: users.privateViewer, idempotencyKey: 'inactive-assignee',
+    });
+    await pool.query("UPDATE users SET status = 'disabled' WHERE id = $1", [users.privateViewer]);
+    const afterDeactivation = await service.getForPrincipal(principal(users.member), { workspaceId, teamId: teams.public, issueId: inactiveAssignment.id });
+    assert.equal(afterDeactivation.issue.assigneeUserId, users.privateViewer);
+    assert.equal((afterDeactivation.issue as typeof afterDeactivation.issue & { assignee?: unknown }).assignee, null);
+    assert.equal((afterDeactivation.activity[0] as typeof afterDeactivation.activity[number] & { actor?: unknown }).actor, null, 'disabled accounts do not expose names through history');
 
     const beforeRace = await service.createForPrincipal(principal(users.member), {
       workspaceId, teamId: teams.public, title: 'Versioned issue', idempotencyKey: 'versioned',

@@ -1,7 +1,7 @@
 import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import { writeSecurityAuditEvent } from '../audit/security-audit-writer.js';
 import { ApiError } from '../shared/api-error.js';
-import type { CreateTeamInput, PrivateTeamMembershipInput, TeamRepository, TeamSummary } from './team-repository.js';
+import type { CreateTeamInput, PrivateTeamListInput, PrivateTeamMembershipInput, PrivateTeamRosterInput, TeamManagementPage, TeamMemberManagementRecord, TeamRepository, TeamSummary } from './team-repository.js';
 
 interface LockedWorkspace { id: string; }
 interface LockedUser { id: string; status: string; }
@@ -68,6 +68,84 @@ export class PrismaTeamRepository implements TeamRepository {
 
   async removePrivateMember(input: PrivateTeamMembershipInput): Promise<void> {
     await this.changePrivateMembership(input, 'remove');
+  }
+
+  async listPrivateMembersForAdministrator(input: PrivateTeamRosterInput): Promise<TeamManagementPage<TeamMemberManagementRecord>> {
+    return this.prisma.$transaction(async (transaction) => {
+      await this.lockWorkspace(transaction, input.workspaceId);
+      const actor = await this.lockActor(transaction, input.workspaceId, input.actorUserId);
+      this.requireAdministrator(actor.role);
+      const teams = await transaction.$queryRaw<LockedTeam[]>`
+        SELECT id::text AS id, visibility
+        FROM teams
+        WHERE workspace_id = ${input.workspaceId}::uuid AND id = ${input.teamId}::uuid
+        FOR UPDATE`;
+      const team = teams[0];
+      if (!team) throw new ApiError(404, 'team_unavailable', 'Team is unavailable');
+      if (team.visibility !== 'private') {
+        throw new ApiError(409, 'team_not_private', 'Membership can only be managed for private teams');
+      }
+
+      const cursor = input.cursor ?? null;
+      const rows = await transaction.$queryRaw<Array<{
+        id: string;
+        email: string;
+        display_name: string;
+        role: string;
+        is_team_member: boolean;
+      }>>`
+        SELECT u.id::text AS id, u.email, u.display_name, wm.role,
+          (tm.user_id IS NOT NULL) AS is_team_member
+        FROM workspace_memberships AS wm
+        JOIN users AS u ON u.id = wm.user_id
+        LEFT JOIN team_memberships AS tm
+          ON tm.workspace_id = wm.workspace_id
+          AND tm.team_id = ${input.teamId}::uuid
+          AND tm.user_id = wm.user_id
+        WHERE wm.workspace_id = ${input.workspaceId}::uuid
+          AND u.status = 'active'
+          AND (${cursor}::uuid IS NULL OR wm.user_id > ${cursor}::uuid)
+        ORDER BY wm.user_id ASC
+        LIMIT ${input.limit + 1}`;
+      const hasMore = rows.length > input.limit;
+      const records = rows.slice(0, input.limit).map(({ id, email, display_name, role, is_team_member }) => ({
+        id,
+        email,
+        displayName: display_name,
+        role,
+        isTeamMember: is_team_member
+      }));
+      return {
+        data: records,
+        hasMore,
+        nextCursor: hasMore ? records[records.length - 1]!.id : null
+      };
+    }, { maxWait: 5_000, timeout: 10_000 });
+  }
+
+  async listPrivateTeamsForAdministrator(input: PrivateTeamListInput): Promise<TeamManagementPage<TeamSummary>> {
+    return this.prisma.$transaction(async (transaction) => {
+      await this.lockWorkspace(transaction, input.workspaceId);
+      const actor = await this.lockActor(transaction, input.workspaceId, input.actorUserId);
+      this.requireAdministrator(actor.role);
+      const rows = await transaction.team.findMany({
+        where: {
+          workspaceId: input.workspaceId,
+          visibility: 'private',
+          ...(input.cursor ? { id: { gt: input.cursor } } : {})
+        },
+        select: { id: true, name: true, key: true, visibility: true },
+        orderBy: { id: 'asc' },
+        take: input.limit + 1
+      });
+      const hasMore = rows.length > input.limit;
+      const data = rows.slice(0, input.limit).map((row) => ({ ...row, visibility: row.visibility as TeamSummary['visibility'] }));
+      return {
+        data,
+        hasMore,
+        nextCursor: hasMore ? data[data.length - 1]!.id : null
+      };
+    }, { maxWait: 5_000, timeout: 10_000 });
   }
 
   private async changePrivateMembership(input: PrivateTeamMembershipInput, operation: 'add' | 'remove'): Promise<void> {

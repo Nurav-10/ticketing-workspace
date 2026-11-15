@@ -10,6 +10,7 @@ export interface IssuedInvitationRecord {
 
 export interface InvitationRepository {
   issue(input: { workspaceId: string; actorUserId: string; email: string; role: InvitationRole; tokenHash: Buffer }): Promise<IssuedInvitationRecord>;
+  listPending(input: { workspaceId: string; actorUserId: string; limit: number; email?: string }): Promise<IssuedInvitationRecord[]>;
   revoke(input: { workspaceId: string; actorUserId: string; invitationId: string }): Promise<void>;
   redeem(input: { userId: string; tokenHash: Buffer }): Promise<RedeemInvitationResult>;
 }

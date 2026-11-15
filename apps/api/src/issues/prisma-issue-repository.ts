@@ -9,19 +9,38 @@ import type {
 const OPERATION = 'issue.create';
 const TX_OPTIONS = { maxWait: 5_000, timeout: 10_000 } as const;
 type Tx = Prisma.TransactionClient;
-type Row = { id: string; workspaceId: string; teamId: string; issueNumber: number; title: string; description: string | null; status: string; priority: string; assigneeUserId: string | null; createdByUserId: string; version: number; createdAt: Date; updatedAt: Date; archivedAt: Date | null; team: { key: string } };
+type VisiblePerson = { displayName: string; status: string; memberships: Array<{ teams: Array<{ teamId: string }> }> };
+type Row = { id: string; workspaceId: string; teamId: string; issueNumber: number; title: string; description: string | null; status: string; workflowStatusId: string | null; priority: string; assigneeUserId: string | null; createdByUserId: string; version: number; createdAt: Date; updatedAt: Date; archivedAt: Date | null; team: { key: string; visibility: string }; assignee: VisiblePerson | null };
 type Cursor = { at: string; id: string };
 interface LockedTeam { id: string; visibility: string; }
 interface LockedIssue { id: string; }
 interface AllocatedNumber { issue_number: number; }
 
+function issueSummaryInclude(workspaceId: string, teamId: string) {
+  return {
+    team: { select: { key: true, visibility: true } },
+    assignee: { select: {
+      displayName: true,
+      status: true,
+      memberships: { where: { workspaceId }, select: { teams: { where: { teamId }, select: { teamId: true } } } },
+    } },
+  } satisfies Prisma.IssueInclude;
+}
+
 function issueError(code: ConstructorParameters<typeof IssueDomainError>[0], message: string): never {
   throw new IssueDomainError(code, message);
+}
+function visiblePerson(person: VisiblePerson | null, id: string | null, visibility: string): { id: string; displayName: string } | null {
+  if (!person || !id || person.status !== 'active' || person.memberships.length === 0) return null;
+  if (visibility === 'private' && !person.memberships.some((membership) => membership.teams.length > 0)) return null;
+  if (visibility !== 'private' && visibility !== 'workspace') return null;
+  return { id, displayName: person.displayName };
 }
 function summary(row: Row): IssueSummary {
   return { id: row.id, workspaceId: row.workspaceId, teamId: row.teamId, issueNumber: row.issueNumber,
     key: `${row.team.key}-${row.issueNumber}`, title: row.title, description: row.description,
-    status: row.status as IssueStatus, priority: row.priority as IssuePriority, assigneeUserId: row.assigneeUserId,
+    status: row.status as IssueStatus, workflowStatusId: row.workflowStatusId, priority: row.priority as IssuePriority, assigneeUserId: row.assigneeUserId,
+    assignee: visiblePerson(row.assignee, row.assigneeUserId, row.team.visibility),
     createdByUserId: row.createdByUserId, version: row.version, createdAt: row.createdAt,
     updatedAt: row.updatedAt, archivedAt: row.archivedAt };
 }
@@ -93,11 +112,16 @@ export class PrismaIssueRepository implements IssueRepository {
           AND next_issue_number < 2147483647
         RETURNING next_issue_number - 1 AS issue_number`;
       if (!allocated[0]) issueError('issue_number_exhausted', 'This team has no available issue numbers');
+      const defaultStatus = await tx.workflowStatus.findFirst({
+        where: { workspaceId: command.workspaceId, teamId: command.teamId, isDefault: true, isRetired: false },
+        select: { id: true },
+      });
       const issue = await tx.issue.create({ data: {
         workspaceId: command.workspaceId, teamId: command.teamId, issueNumber: allocated[0].issue_number,
         title: command.title, description: command.description, priority: command.priority,
+        workflowStatusId: defaultStatus?.id ?? null,
         assigneeUserId: command.assigneeUserId, createdByUserId: command.actorUserId,
-      }, include: { team: { select: { key: true } } } });
+      }, include: issueSummaryInclude(command.workspaceId, command.teamId) });
       await this.writeActivity(tx, issue, command.actorUserId, 'created', {});
       await this.writeOutbox(tx, issue, 'issue.created');
       const idempotencyTimes = await tx.$queryRaw<Array<{ created_at: Date; expires_at: Date }>>`SELECT sample.created_at, sample.created_at + (${command.idempotencyRetentionMs} * interval '1 millisecond') AS expires_at FROM (SELECT clock_timestamp() AS created_at) AS sample`;
@@ -121,7 +145,7 @@ export class PrismaIssueRepository implements IssueRepository {
         ...(query.status ? { status: query.status } : {}), ...(query.priority ? { priority: query.priority } : {}),
         ...(query.assigneeUserId ? { assigneeUserId: query.assigneeUserId } : {}),
         ...(cursor ? { OR: [{ createdAt: { lt: new Date(cursor.at) } }, { createdAt: new Date(cursor.at), id: { lt: cursor.id } }] } : {}),
-      }, include: { team: { select: { key: true } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: query.limit + 1,
+      }, include: issueSummaryInclude(query.workspaceId, query.teamId), orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: query.limit + 1,
     });
     const hasMore = rows.length > query.limit;
     const page = rows.slice(0, query.limit);
@@ -138,11 +162,13 @@ export class PrismaIssueRepository implements IssueRepository {
         issue: { workspace: { memberships: { some: { userId: input.actorUserId, user: { status: 'active' } } } },
           team: { OR: [{ visibility: 'workspace' }, { visibility: 'private', memberships: { some: { workspaceId: input.workspaceId, userId: input.actorUserId } } }] } },
         ...(cursor ? { OR: [{ createdAt: { lt: new Date(cursor.at) } }, { createdAt: new Date(cursor.at), id: { lt: cursor.id } }] } : {}) },
+      include: { actor: { select: { displayName: true, status: true, memberships: { where: { workspaceId: input.workspaceId }, select: { teams: { where: { teamId: input.teamId }, select: { teamId: true } } } } } } },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limit + 1,
     });
     const hasMore = events.length > limit;
     const page = events.slice(0, limit);
     const activity: IssueActivityRecord[] = page.map((e) => ({ id: e.id, issueId: e.issueId, actorUserId: e.actorUserId,
+      actor: visiblePerson(e.actor, e.actorUserId, issue.team.visibility),
       kind: e.eventKind as IssueActivityRecord['kind'], metadata: e.metadata as IssueActivityMetadata, createdAt: e.createdAt }));
     return { issue: summary(issue), activity, ...(hasMore && page.length ? { nextActivityCursor: encodeCursor({ at: page.at(-1)!.createdAt.toISOString(), id: page.at(-1)!.id }) } : {}) };
   }
@@ -173,7 +199,19 @@ export class PrismaIssueRepository implements IssueRepository {
     return this.mutate(input, async (tx, current) => {
       if (current.version !== input.expectedVersion) issueError('issue_version_conflict', 'Issue has changed; reload before applying this action');
       if (current.archivedAt || !input.allowedFromStatuses.includes(current.status as IssueStatus)) issueError('issue_invalid_transition', 'Issue cannot make that status change');
-      const changed = await tx.issue.updateMany({ where: { id: input.issueId, workspaceId: input.workspaceId, teamId: input.teamId, version: input.expectedVersion, status: { in: [...input.allowedFromStatuses] }, archivedAt: null }, data: { status: input.targetStatus, version: { increment: 1 }, updatedAt: new Date() } });
+      const targetWorkflowStatus = await tx.workflowStatus.findFirst({
+        where: { workspaceId: input.workspaceId, teamId: input.teamId, key: input.targetStatus, isRetired: false },
+        select: { id: true },
+      });
+      const changed = await tx.issue.updateMany({
+        where: { id: input.issueId, workspaceId: input.workspaceId, teamId: input.teamId, version: input.expectedVersion, status: { in: [...input.allowedFromStatuses] }, archivedAt: null },
+        data: {
+          status: input.targetStatus,
+          ...(targetWorkflowStatus ? { workflowStatusId: targetWorkflowStatus.id } : {}),
+          version: { increment: 1 },
+          updatedAt: new Date(),
+        },
+      });
       if (!changed.count) return this.casConflict(tx, input);
       const after = await this.scopedIssue(tx, input, input.issueId, true);
       await this.writeActivity(tx, after, input.actorUserId, 'status_changed', { statusBefore: current.status as IssueStatus, statusAfter: input.targetStatus });
@@ -209,11 +247,11 @@ export class PrismaIssueRepository implements IssueRepository {
     return client.issue.findFirst({ where: { id: issueId, workspaceId: scope.workspaceId, teamId: scope.teamId,
       ...(liveOnly ? { archivedAt: null } : {}), workspace: { memberships: { some: { userId: scope.actorUserId, user: { status: 'active' } } } },
       team: { OR: [{ visibility: 'workspace' }, { visibility: 'private', memberships: { some: { workspaceId: scope.workspaceId, userId: scope.actorUserId } } }] },
-    }, include: { team: { select: { key: true } } } }) as Promise<Row | null>;
+    }, include: issueSummaryInclude(scope.workspaceId, scope.teamId) }) as Promise<Row | null>;
   }
 
   private async scopedIssue(client: PrismaClient | Tx, scope: IssueScope, issueId: string, liveOnly: boolean): Promise<Row> {
-    const row = await client.issue.findFirst({ where: { id: issueId, workspaceId: scope.workspaceId, teamId: scope.teamId, ...(liveOnly ? { archivedAt: null } : {}) }, include: { team: { select: { key: true } } } });
+    const row = await client.issue.findFirst({ where: { id: issueId, workspaceId: scope.workspaceId, teamId: scope.teamId, ...(liveOnly ? { archivedAt: null } : {}) }, include: issueSummaryInclude(scope.workspaceId, scope.teamId) });
     if (!row) errorNotFound(); return row as Row;
   }
 

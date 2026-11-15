@@ -28,7 +28,7 @@
 .issues-list { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--color-border); }
 .issues-list li { border-bottom: 1px solid var(--color-border); }
 .issues-row {
-  display: grid; width: 100%; grid-template-columns: 100px minmax(140px, 1fr) 130px 100px;
+  display: grid; width: 100%; grid-template-columns: 100px minmax(140px, 1fr) 120px minmax(90px, 140px) 80px;
   align-items: center; gap: 12px; text-align: left; background: transparent !important;
   color: inherit !important; border: 0 !important; border-radius: 0 !important; padding: 15px 8px !important;
 }
@@ -36,6 +36,7 @@
 .issues-key { font: var(--font-weight-semibold) var(--font-size-caption) var(--font-mono); color: var(--color-text-muted); }
 .issues-title { overflow: hidden; text-overflow: ellipsis; }
 .issues-status, .issues-priority { font-size: var(--font-size-caption); text-transform: capitalize; }
+.issues-assignee { font-size: var(--font-size-caption); overflow: hidden; text-overflow: ellipsis; }
 .issues-empty { padding: var(--space-8) 0; color: var(--color-text-secondary); }
 .issues-panel { margin-top: 20px; padding: var(--space-6); border: 1px solid var(--color-border-strong); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-card); }
 .issues-panel h2 { font-size: 20px; margin: 16px 0; }
@@ -57,7 +58,7 @@
 .issues-meta { display: flex; gap: var(--space-8); flex-wrap: wrap; padding: 16px 0; border-block: 1px solid var(--color-border); }
 .issues-meta div { min-width: 100px; }
 .issues-meta dt { color: var(--color-text-muted); font-size: var(--font-size-caption); }
-.issues-meta dd { margin: 4px 0; text-transform: capitalize; }
+.issues-meta dd { margin: 4px 0; }
 .issues-actions { margin: 18px 0; }
 .issues-actions label { display: flex; align-items: center; gap: 8px; }
 .issues-actions select { width: auto; }
@@ -73,6 +74,7 @@
   .issues-feature { padding: 22px 16px; }
   .issues-row { grid-template-columns: 75px minmax(100px, 1fr) 82px; gap: 8px; padding: 12px 4px !important; }
   .issues-priority { display: none; }
+  .issues-assignee { grid-column: 2 / -1; }
   .issues-panel { padding: 17px; }
   .issues-actions { align-items: flex-start; }
   .issues-actions label { width: 100%; justify-content: space-between; }

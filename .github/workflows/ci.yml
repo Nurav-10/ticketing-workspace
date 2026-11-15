@@ -44,6 +44,11 @@ jobs:
           docker compose run --rm --no-deps api
           bun run test
 
+      - name: Web unit tests
+        run: >-
+          docker compose run --rm --no-deps api
+          bun test apps/web/src
+
       - name: Start isolated PostgreSQL integration database
         run: docker compose --profile test up --detach --wait db-test
 

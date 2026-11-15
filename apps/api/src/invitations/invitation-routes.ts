@@ -8,6 +8,9 @@ const issueBody = z.object({
   email: z.string().trim().toLowerCase().email().max(320),
   role: z.enum(['admin', 'member'])
 }).strict();
+const listLimit = z.number().int().min(1).max(100);
+const listEmail = z.string().trim().toLowerCase().email().max(320);
+const findByEmailBody = z.object({ email: listEmail }).strict();
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function requireUuid(value: unknown): string {
@@ -16,6 +19,34 @@ function requireUuid(value: unknown): string {
 }
 
 export function registerInvitationRoutes(app: Router, service: InvitationAdministrator): void {
+  app.get('/workspaces/:workspaceId/invitations', async (request: Request, response: Response) => {
+    if (!request.principal) throw new ApiError(401, 'unauthenticated', 'Authentication required');
+    response.setHeader('Cache-Control', 'no-store');
+    const workspaceId = requireUuid(request.params.workspaceId);
+    const rawLimit = request.query.limit;
+    const rawEmail = request.query.email;
+    let limit = 50;
+    if (rawLimit !== undefined) {
+      if (typeof rawLimit !== 'string' || !/^\d+$/.test(rawLimit)) {
+        throw new ApiError(400, 'invalid_request', 'Request validation failed');
+      }
+      const parsed = listLimit.safeParse(Number(rawLimit));
+      if (!parsed.success) throw new ApiError(400, 'invalid_request', 'Request validation failed');
+      limit = parsed.data;
+    }
+    if (rawEmail !== undefined) throw new ApiError(400, 'invalid_request', 'Request validation failed');
+    response.json({ data: await service.listPending(request.principal, workspaceId, limit) });
+  });
+
+  app.post('/workspaces/:workspaceId/invitations/search', async (request: Request, response: Response) => {
+    if (!request.principal) throw new ApiError(401, 'unauthenticated', 'Authentication required');
+    response.setHeader('Cache-Control', 'no-store');
+    const workspaceId = requireUuid(request.params.workspaceId);
+    const parsed = findByEmailBody.safeParse(request.body);
+    if (!parsed.success) throw new ApiError(400, 'invalid_request', 'Request validation failed');
+    response.json({ data: await service.listPending(request.principal, workspaceId, 1, parsed.data.email) });
+  });
+
   app.post('/workspaces/:workspaceId/invitations', async (request: Request, response: Response) => {
     if (!request.principal) throw new ApiError(401, 'unauthenticated', 'Authentication required');
     response.setHeader('Cache-Control', 'no-store');

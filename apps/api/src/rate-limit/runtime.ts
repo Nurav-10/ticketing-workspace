@@ -15,6 +15,10 @@ const policies: Readonly<Record<string, RateLimitPolicy>> = {
   'invitation.issue.actor': policy(100, hour),
   'invitation.redeem.ip': policy(30, minute),
   'invitation.redeem.token': policy(10, minute),
+  'invitation.list.ip': policy(30, minute),
+  'invitation.list.actor': policy(60, hour),
+  'invitation.search.ip': policy(10, minute),
+  'invitation.search.actor': policy(30, hour),
 };
 
 /** A dedicated key is mandatory; malformed configuration is never silently accepted. */

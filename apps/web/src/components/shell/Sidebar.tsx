@@ -26,9 +26,10 @@ type SidebarProps = {
   signOutError?: string
   onSignOut: () => void
   onRetry: () => void
+  mutationPending: boolean
 }
 
-export function Sidebar({ open, mobile, onClose, auth, workspaces, items, selectedWorkspaceId, onSelectWorkspace, teams, teamAccess, selectedTeamId, onSelectTeam, onRetryTeams, signingOut, signOutError, onSignOut, onRetry }: SidebarProps) {
+export function Sidebar({ open, mobile, onClose, auth, workspaces, items, selectedWorkspaceId, onSelectWorkspace, teams, teamAccess, selectedTeamId, onSelectTeam, onRetryTeams, signingOut, signOutError, onSignOut, onRetry, mutationPending }: SidebarProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -80,7 +81,7 @@ export function Sidebar({ open, mobile, onClose, auth, workspaces, items, select
       <div className="sidebar-content">
         <div className="sidebar-label">Workspace</div>
         <label className="context-select-label" htmlFor="workspace-context">Workspace</label>
-        <select id="workspace-context" className="context-select" value={selectedWorkspaceId} onChange={(event) => onSelectWorkspace(event.target.value)} disabled={workspaces !== 'ready' || items.length === 0}>
+        <select id="workspace-context" className="context-select" value={selectedWorkspaceId} onChange={(event) => onSelectWorkspace(event.target.value)} disabled={mutationPending || workspaces !== 'ready' || items.length === 0}>
           {workspaces === 'ready' && items.length === 0 ? <option value="">No workspaces available</option> : null}
           {workspaces === 'loading' ? <option value="">Loading workspaces…</option> : null}
           {workspaces === 'signed-out' ? <option value="">Sign in to select a workspace</option> : null}
@@ -88,19 +89,19 @@ export function Sidebar({ open, mobile, onClose, auth, workspaces, items, select
           {items.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
         </select>
         <nav className="primary-nav" aria-label="Workspace sections">
-          <div className="nav-item nav-current" aria-current="page"><Icon name="inbox" /><span>All issues</span></div>
+          <div className="nav-item nav-current" aria-current="page"><Icon name="inbox" /><span>Team issues</span></div>
           <div className="nav-item nav-disabled" aria-disabled="true"><Icon name="user" /><span>My issues</span><small>Unavailable</small></div>
           <div className="nav-item nav-disabled" aria-disabled="true"><Icon name="layers" /><span>Projects</span><small>Unavailable</small></div>
         </nav>
 
         <div className="sidebar-label team-label">Team</div>
         <label className="context-select-label" htmlFor="team-context">Issue scope</label>
-        <select id="team-context" className="context-select" value={selectedTeamId} onChange={(event) => onSelectTeam(event.target.value)} disabled={teamAccess !== 'ready' || teams.length === 0}>
+        <select id="team-context" className="context-select" value={selectedTeamId} onChange={(event) => onSelectTeam(event.target.value)} disabled={mutationPending || teamAccess !== 'ready' || teams.length === 0}>
           {teamAccess === 'loading' ? <option value="">Loading teams…</option> : null}
           {teamAccess === 'signed-out' ? <option value="">Sign in to load teams</option> : null}
           {teamAccess === 'error' ? <option value="">Teams unavailable</option> : null}
           {teamAccess === 'ready' && teams.length === 0 ? <option value="">No teams available</option> : null}
-          {teamAccess === 'ready' && teams.length > 0 ? <option value="">All teams</option> : null}
+          {teamAccess === 'ready' && teams.length > 0 ? <option value="">Select a team</option> : null}
           {teams.map((team) => <option key={team.id} value={team.id}>{team.name} ({team.key})</option>)}
         </select>
         {teamAccess === 'error' && <Button className="access-retry" size="small" variant="subtle" onClick={onRetryTeams}>Retry loading teams</Button>}
@@ -113,7 +114,7 @@ export function Sidebar({ open, mobile, onClose, auth, workspaces, items, select
         <StateBadge className="access-card" tone={workspaces === 'ready' ? 'success' : 'warning'}><span><b>{workspaces === 'ready' ? 'Workspace access ready' : accessLabel}</b><small>{workspaces === 'error' ? 'Could not load workspace data' : auth === 'loading' ? 'Checking sign-in availability' : auth === 'available' ? 'Sign-in is available' : auth === 'error' ? 'Could not check sign-in' : 'Sign-in is unavailable'}</small></span></StateBadge>
         {(workspaces === 'error' || auth === 'error') && <Button className="access-retry" size="small" variant="subtle" onClick={onRetry}>Retry loading</Button>}
         <div className="profile-row"><span className="profile-avatar" aria-hidden="true">{workspaces === 'ready' ? '✓' : '·'}</span><span className="profile-copy"><b>{accountMessage}</b><small>{workspaces === 'ready' ? `${items.length} workspace${items.length === 1 ? '' : 's'}` : auth === 'available' ? 'Continue with your account' : 'Account session unavailable'}</small></span>
-          {workspaces === 'ready' && auth === 'available' ? <Button className="signout-button" size="small" variant="subtle" disabled={signingOut} onClick={onSignOut}>{signingOut ? 'Signing out…' : 'Sign out'}</Button> : null}
+          {workspaces === 'ready' && auth === 'available' ? <Button className="signout-button" size="small" variant="subtle" disabled={signingOut || mutationPending} onClick={onSignOut}>{signingOut ? 'Signing out…' : 'Sign out'}</Button> : null}
         </div>
         {workspaces === 'signed-out' && auth === 'available' && <a className="signin-link" href="/api/v1/auth/login">Sign in</a>}
         {signOutError && <p className="access-error" role="alert">{signOutError}</p>}

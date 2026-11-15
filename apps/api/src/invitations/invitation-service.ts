@@ -9,6 +9,7 @@ export interface InvitationRedeemer {
 
 export interface InvitationAdministrator extends InvitationRedeemer {
   issue(principal: Principal, workspaceId: string, input: { email: string; role: InvitationRole }): Promise<IssuedInvitationRecord & { token: string }>;
+  listPending(principal: Principal, workspaceId: string, limit: number, email?: string): Promise<IssuedInvitationRecord[]>;
   revoke(principal: Principal, workspaceId: string, invitationId: string): Promise<void>;
 }
 
@@ -35,6 +36,22 @@ export class InvitationService implements InvitationAdministrator {
       tokenHash: secret.tokenHash
     });
     return { ...invitation, token: secret.token };
+  }
+
+  listPending(principal: Principal, workspaceId: string, limit: number, requestedEmail?: string): Promise<IssuedInvitationRecord[]> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw new ApiError(400, 'invalid_request', 'Request validation failed');
+    }
+    const email = requestedEmail === undefined ? undefined : normalizeInvitationEmail(requestedEmail);
+    if (email !== undefined && !isValidEmail(email)) {
+      throw new ApiError(400, 'invalid_request', 'Request validation failed');
+    }
+    return this.repository.listPending({
+      workspaceId,
+      actorUserId: principal.userId,
+      limit,
+      ...(email === undefined ? {} : { email })
+    });
   }
 
   revoke(principal: Principal, workspaceId: string, invitationId: string): Promise<void> {

@@ -100,10 +100,19 @@ test('invitation middleware uses trusted actor and token dimensions', async () =
   await limiters.issue(issue.request, issue.response, issue.next);
   const redeem = harness({ socket: { remoteAddress: '203.0.113.9' }, get: () => undefined, body: { token: 'secret-token' } });
   await limiters.redeem(redeem.request, redeem.response, redeem.next);
+  const list = harness({ socket: { remoteAddress: '203.0.113.10' }, get: () => undefined, principal: { userId: 'user-2' } });
+  await limiters.list(list.request, list.response, list.next);
+  const search = harness({ socket: { remoteAddress: '203.0.113.11' }, get: () => undefined, principal: { userId: 'user-3' }, body: { email: 'private@example.test' } });
+  await limiters.search(search.request, search.response, search.next);
   assert.deepEqual(calls, [
     ['invitation.issue.ip', '203.0.113.8'],
     ['invitation.issue.actor', 'user-1'],
     ['invitation.redeem.ip', '203.0.113.9'],
     ['invitation.redeem.token', 'secret-token'],
+    ['invitation.list.ip', '203.0.113.10'],
+    ['invitation.list.actor', 'user-2'],
+    ['invitation.search.ip', '203.0.113.11'],
+    ['invitation.search.actor', 'user-3'],
   ]);
+  assert.equal(calls.some(([operation, identifier]) => operation.startsWith('invitation.search.') && identifier.includes('@')), false);
 });

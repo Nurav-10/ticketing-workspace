@@ -30,6 +30,13 @@ test('create validation trims title, applies defaults, and bounds text', () => {
   assert.throws(() => validateCreateIssueInput({ workspaceId, teamId, title: 'ok', description: 'x'.repeat(20_001), idempotencyKey: 'req-3' }), IssueDomainError);
 });
 
+test('create and patch validation reject NUL in text persisted as PostgreSQL varchar', () => {
+  assert.throws(() => validateCreateIssueInput({ workspaceId, teamId, title: 'bad\0title', idempotencyKey: 'req-nul-title' }), IssueDomainError);
+  assert.throws(() => validateCreateIssueInput({ workspaceId, teamId, title: 'valid', description: 'bad\0description', idempotencyKey: 'req-nul-description' }), IssueDomainError);
+  assert.throws(() => validateIssuePatch({ workspaceId, teamId, issueId, expectedVersion: 1, title: 'bad\0title' }), IssueDomainError);
+  assert.throws(() => validateIssuePatch({ workspaceId, teamId, issueId, expectedVersion: 1, description: 'bad\0description' }), IssueDomainError);
+});
+
 test('workflow has only explicit transitions and exposes safe source constraints', () => {
   assert.equal(canTransition('todo', 'in_progress'), true);
   assert.equal(canTransition('done', 'in_progress'), false);

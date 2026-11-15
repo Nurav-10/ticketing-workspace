@@ -1,5 +1,5 @@
 import type { Principal } from '../auth/authenticator.js';
-import type { CreateTeamInput, PrivateTeamMembershipInput, TeamRepository, TeamSummary } from './team-repository.js';
+import type { CreateTeamInput, PrivateTeamListInput, PrivateTeamMembershipInput, PrivateTeamRosterInput, TeamManagementPage, TeamMemberManagementRecord, TeamRepository, TeamSummary } from './team-repository.js';
 
 export interface TeamLister {
   listVisibleToPrincipal(principal: Principal, workspaceId: string): Promise<TeamSummary[]>;
@@ -9,6 +9,8 @@ export interface TeamAdministrator {
   createForPrincipal(principal: Principal, input: Omit<CreateTeamInput, 'actorUserId'>): Promise<TeamSummary>;
   addPrivateMemberForPrincipal(principal: Principal, input: Omit<PrivateTeamMembershipInput, 'actorUserId'>): Promise<void>;
   removePrivateMemberForPrincipal(principal: Principal, input: Omit<PrivateTeamMembershipInput, 'actorUserId'>): Promise<void>;
+  listPrivateMembersForPrincipal(principal: Principal, input: Omit<PrivateTeamRosterInput, 'actorUserId'>): Promise<TeamManagementPage<TeamMemberManagementRecord>>;
+  listPrivateTeamsForPrincipal(principal: Principal, input: Omit<PrivateTeamListInput, 'actorUserId'>): Promise<TeamManagementPage<TeamSummary>>;
 }
 
 export class TeamService implements TeamLister, TeamAdministrator {
@@ -28,5 +30,13 @@ export class TeamService implements TeamLister, TeamAdministrator {
 
   removePrivateMemberForPrincipal(principal: Principal, input: Omit<PrivateTeamMembershipInput, 'actorUserId'>): Promise<void> {
     return this.repository.removePrivateMember({ ...input, actorUserId: principal.userId });
+  }
+
+  listPrivateMembersForPrincipal(principal: Principal, input: Omit<PrivateTeamRosterInput, 'actorUserId'>): Promise<TeamManagementPage<TeamMemberManagementRecord>> {
+    return this.repository.listPrivateMembersForAdministrator({ ...input, actorUserId: principal.userId });
+  }
+
+  listPrivateTeamsForPrincipal(principal: Principal, input: Omit<PrivateTeamListInput, 'actorUserId'>): Promise<TeamManagementPage<TeamSummary>> {
+    return this.repository.listPrivateTeamsForAdministrator({ ...input, actorUserId: principal.userId });
   }
 }

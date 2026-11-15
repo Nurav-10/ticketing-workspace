@@ -16,6 +16,7 @@ const teams: TeamSummary[] = [{ id: 'f43515d2-0fd8-46f7-a3a4-4f1d3bc70f0a', name
 const invitationService: InvitationAdministrator = {
   redeem: async () => ({ workspaceId, role: 'member' }),
   issue: async (): Promise<IssuedInvitationRecord & { token: string }> => { throw new Error('Invitation issue is not exercised in team tests'); },
+  listPending: async () => [],
   revoke: async () => undefined
 };
 
@@ -48,7 +49,7 @@ async function listen(app: ReturnType<typeof buildApp>): Promise<{ baseUrl: stri
 
 test('team listing validates workspace UUID before calling the service', async () => {
   let calls = 0;
-  const server = await listen(appWith({ listVisibleToPrincipal: async () => { calls++; return teams; }, createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); } }));
+  const server = await listen(appWith({ listVisibleToPrincipal: async () => { calls++; return teams; }, createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, listPrivateMembersForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }), listPrivateTeamsForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }) }));
   try {
     const response = await fetch(`${server.baseUrl}/api/v1/workspaces/not-a-uuid/teams`);
     assert.equal(response.status, 400);
@@ -63,7 +64,7 @@ test('team listing passes authenticated principal and workspace scope, ignoring 
     listVisibleToPrincipal: async (receivedPrincipal, receivedWorkspaceId) => {
       received = { principal: receivedPrincipal, workspaceId: receivedWorkspaceId };
       return teams;
-    }, createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }
+    }, createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, listPrivateMembersForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }), listPrivateTeamsForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null })
   }));
   try {
     const response = await fetch(`${server.baseUrl}/api/v1/workspaces/${workspaceId}/teams`, {
@@ -82,7 +83,7 @@ test('team listing requires authenticated session principal', async () => {
     readinessProbe: { query: async () => undefined },
     workspaceService: { listForPrincipal: async () => [] },
     invitationService,
-    teamService: { listVisibleToPrincipal: async () => teams, createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); } },
+    teamService: { listVisibleToPrincipal: async () => teams, createForPrincipal: async () => { throw new Error('Not exercised'); }, addPrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, removePrivateMemberForPrincipal: async () => { throw new Error('Not exercised'); }, listPrivateMembersForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }), listPrivateTeamsForPrincipal: async () => ({ data: [], hasMore: false, nextCursor: null }) },
     membershipService: { changeRoleForPrincipal: async () => undefined, removeMemberForPrincipal: async () => undefined, transferOwnershipForPrincipal: async () => undefined, leaveWorkspaceForPrincipal: async () => undefined }
   });
   const server = await listen(app);
