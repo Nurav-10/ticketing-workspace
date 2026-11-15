@@ -15,10 +15,6 @@ function transactionClient(auditRows: unknown[], redeem = false) {
     auditRows,
     $queryRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const sql = strings.join('?');
-      if (sql.includes('INSERT INTO security_audit_events')) {
-        auditRows.push({ eventKind: values[2], metadata: JSON.parse(String(values[3])) });
-        return [{ id: '66666666-6666-4666-8666-666666666666' }];
-      }
       if (sql.includes('FROM workspaces')) return [{ id: workspaceId }];
       if (sql.includes('FROM workspace_memberships') && sql.includes('user_id')) return [{ userId: actorId }];
       if (sql.includes('FROM users AS u') && sql.includes('workspace_memberships')) return [{ role: 'owner' }];
@@ -33,6 +29,12 @@ function transactionClient(auditRows: unknown[], redeem = false) {
       throw new Error(`Unexpected query in test stub: ${sql}`);
     },
     $executeRaw: async () => 1,
+    securityAuditEvent: {
+      create: async (args: { data: { eventKind: unknown; metadata: unknown } }) => {
+        auditRows.push({ eventKind: args.data.eventKind, metadata: args.data.metadata });
+        return { id: '66666666-6666-4666-8666-666666666666' };
+      }
+    },
     invitation: {
       create: async () => ({ id: invitationId, email: 'secret@example.test', role: 'member', expiresAt: new Date('2026-11-21T00:00:00Z') }),
       updateMany: async () => ({ count: 0 })

@@ -13,17 +13,24 @@ const targetUserId = '33333333-3333-4333-8333-333333333333';
 
 function fakeTransaction(actorIsMember = true) {
   const statements: string[] = [];
+  const creates: unknown[] = [];
   const tx = {
     $queryRaw: async (strings: TemplateStringsArray) => {
       const sql = strings.join('?');
       statements.push(sql);
       if (sql.includes('FROM workspaces')) return [{ id: workspaceId }];
       if (sql.includes('FROM workspace_memberships')) return actorIsMember ? [{ user_id: actorUserId }] : [];
-      if (sql.includes('INSERT INTO security_audit_events')) return [{ id: '44444444-4444-4444-8444-444444444444' }];
       throw new Error('Unexpected statement');
     },
+    securityAuditEvent: {
+      create: async (args: { data: unknown }) => {
+        statements.push('securityAuditEvent.create');
+        creates.push(args.data);
+        return { id: '44444444-4444-4444-8444-444444444444' };
+      }
+    },
   };
-  return { tx: tx as unknown as Prisma.TransactionClient, statements };
+  return { tx: tx as unknown as Prisma.TransactionClient, statements, creates };
 }
 
 const validInput: SecurityAuditEventInput = {
@@ -34,13 +41,19 @@ const validInput: SecurityAuditEventInput = {
 };
 
 test('writer validates actor scope and inserts the event through the supplied transaction', async () => {
-  const { tx, statements } = fakeTransaction();
+  const { tx, statements, creates } = fakeTransaction();
   const id = await writeSecurityAuditEvent(tx, validInput);
   assert.equal(id, '44444444-4444-4444-8444-444444444444');
   assert.equal(statements.length, 3);
   assert.match(statements[0] ?? '', /FROM workspaces[\s\S]*FOR KEY SHARE/);
   assert.match(statements[1] ?? '', /FROM workspace_memberships[\s\S]*FOR KEY SHARE/);
-  assert.match(statements[2] ?? '', /INSERT INTO security_audit_events/);
+  assert.equal(statements[2], 'securityAuditEvent.create');
+  assert.deepEqual(creates, [{
+    workspaceId,
+    actorUserId,
+    eventKind: 'workspace_membership_removed',
+    metadata: { target_user_id: targetUserId, role_before: 'member' }
+  }]);
 });
 
 test('writer rejects malformed or sensitive metadata before any persistence query', async () => {
@@ -76,4 +89,5 @@ test('system events may omit an actor but still require a valid event payload an
   await writeSecurityAuditEvent(tx, event);
   assert.equal(statements.length, 2);
   assert.doesNotMatch(statements.join('\n'), /FROM workspace_memberships/);
+  assert.equal(statements.at(-1), 'securityAuditEvent.create');
 });

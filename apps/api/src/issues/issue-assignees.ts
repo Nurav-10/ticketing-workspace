@@ -1,5 +1,5 @@
 import type { Request, Response, Router } from 'express';
-import type { PrismaClient } from '../generated/prisma/client.js';
+import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import type { Principal } from '../auth/authenticator.js';
 import { ApiError } from '../shared/api-error.js';
 
@@ -47,7 +47,6 @@ export class IssueAssigneeApplicationService implements IssueAssigneeService {
 }
 
 interface Cursor { id: string; }
-interface UserRow { id: string; displayName: string; }
 
 /**
  * Tenant-scoped assignee lookup. Both team visibility and actor access are checked
@@ -60,79 +59,44 @@ export class PrismaIssueAssigneeRepository implements IssueAssigneeRepository {
   async listAuthorized(query: IssueAssigneeQuery & { actorUserId: string }): Promise<IssueAssigneePage> {
     const cursor = decodeCursor(query.cursor);
     const limit = query.limit ?? DEFAULT_LIMIT;
+    return this.prisma.$transaction(async (tx) => {
+      const actorAccess: Prisma.TeamWhereInput = {
+        id: query.teamId,
+        workspaceId: query.workspaceId,
+        workspace: { memberships: { some: { userId: query.actorUserId, user: { status: 'active' } } } },
+        OR: [
+          { visibility: 'workspace' },
+          { visibility: 'private', memberships: { some: { workspaceId: query.workspaceId, userId: query.actorUserId } } },
+        ],
+      };
+      const authorized = await tx.team.findFirst({ where: actorAccess, select: { id: true } });
+      if (!authorized) throw notFound();
 
-    const authorized = await this.prisma.$queryRaw<Array<{ authorized: boolean }>>`
-      SELECT EXISTS (
-        SELECT 1
-        FROM teams AS t
-        JOIN workspace_memberships AS actor_membership
-          ON actor_membership.workspace_id = t.workspace_id
-         AND actor_membership.user_id = ${query.actorUserId}::uuid
-        JOIN users AS actor
-          ON actor.id = actor_membership.user_id
-         AND actor.status = 'active'
-        WHERE t.workspace_id = ${query.workspaceId}::uuid
-          AND t.id = ${query.teamId}::uuid
-          AND (
-            t.visibility = 'workspace'
-            OR (t.visibility = 'private' AND EXISTS (
-              SELECT 1 FROM team_memberships AS actor_team_membership
-              WHERE actor_team_membership.workspace_id = t.workspace_id
-                AND actor_team_membership.team_id = t.id
-                AND actor_team_membership.user_id = actor.id
-            ))
-          )
-      ) AS authorized`;
-    if (!authorized[0]?.authorized) throw notFound();
-
-    const rows = await this.prisma.$queryRaw<UserRow[]>`
-      SELECT candidate.id::text AS id, candidate.display_name AS "displayName"
-      FROM users AS candidate
-      JOIN workspace_memberships AS candidate_membership
-        ON candidate_membership.workspace_id = ${query.workspaceId}::uuid
-       AND candidate_membership.user_id = candidate.id
-      JOIN teams AS t
-        ON t.workspace_id = candidate_membership.workspace_id
-       AND t.id = ${query.teamId}::uuid
-      WHERE candidate.status = 'active'
-        AND EXISTS (
-          SELECT 1
-          FROM workspace_memberships AS actor_membership
-          JOIN users AS actor
-            ON actor.id = actor_membership.user_id
-           AND actor.status = 'active'
-          WHERE actor_membership.workspace_id = t.workspace_id
-            AND actor_membership.user_id = ${query.actorUserId}::uuid
-            AND (
-              t.visibility = 'workspace'
-              OR (t.visibility = 'private' AND EXISTS (
-                SELECT 1 FROM team_memberships AS actor_team_membership
-                WHERE actor_team_membership.workspace_id = t.workspace_id
-                  AND actor_team_membership.team_id = t.id
-                  AND actor_team_membership.user_id = actor.id
-              ))
-            )
-        )
-        AND (
-          t.visibility = 'workspace'
-          OR (t.visibility = 'private' AND EXISTS (
-            SELECT 1 FROM team_memberships AS candidate_team_membership
-            WHERE candidate_team_membership.workspace_id = t.workspace_id
-              AND candidate_team_membership.team_id = t.id
-              AND candidate_team_membership.user_id = candidate.id
-          ))
-        )
-        AND (${cursor?.id ?? null}::uuid IS NULL OR candidate.id > ${cursor?.id ?? null}::uuid)
-      ORDER BY candidate.id ASC
-      LIMIT ${limit + 1}`;
-
-    const hasMore = rows.length > limit;
-    const page = rows.slice(0, limit).map(({ id, displayName }) => ({ id, displayName }));
-    const last = page.at(-1);
-    return {
-      items: page,
-      ...(hasMore && last ? { nextCursor: encodeCursor({ id: last.id }) } : {}),
-    };
+      // Keep authorization in this candidate query too. The repeatable-read
+      // transaction keeps the preceding 404 check and this page on one snapshot.
+      const candidateScope: Prisma.WorkspaceMembershipWhereInput = {
+        workspaceId: query.workspaceId,
+        user: { status: 'active' },
+        AND: [
+          { workspace: { teams: { some: actorAccess } } },
+          { OR: [
+            { workspace: { teams: { some: { id: query.teamId, workspaceId: query.workspaceId, visibility: 'workspace' } } } },
+            { teams: { some: { teamId: query.teamId, team: { workspaceId: query.workspaceId, visibility: 'private' } } } },
+          ] },
+          ...(cursor ? [{ userId: { gt: cursor.id } }] : []),
+        ],
+      };
+      const rows = await tx.workspaceMembership.findMany({
+        where: candidateScope,
+        orderBy: { userId: 'asc' },
+        take: limit + 1,
+        select: { userId: true, user: { select: { displayName: true } } },
+      });
+      const hasMore = rows.length > limit;
+      const page = rows.slice(0, limit).map(({ userId, user }) => ({ id: userId, displayName: user.displayName }));
+      const last = page.at(-1);
+      return { items: page, ...(hasMore && last ? { nextCursor: encodeCursor({ id: last.id }) } : {}) };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
 }
 

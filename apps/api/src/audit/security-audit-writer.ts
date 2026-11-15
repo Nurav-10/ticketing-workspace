@@ -133,17 +133,16 @@ export async function writeSecurityAuditEvent(
       if (memberships.length !== 1) throw new SecurityAuditWriteError();
     }
 
-    const rows = await transaction.$queryRaw<Array<{ id: string }>>`
-      INSERT INTO security_audit_events (workspace_id, actor_user_id, event_kind, metadata)
-      VALUES (
-        ${input.workspaceId}::uuid,
-        ${input.actorUserId}::uuid,
-        ${input.eventKind}::security_audit_event_kind,
-        ${JSON.stringify(metadata)}::jsonb
-      )
-      RETURNING id::text AS id
-    `;
-    const id = rows[0]?.id;
+    const event = await transaction.securityAuditEvent.create({
+      data: {
+        workspaceId: input.workspaceId,
+        actorUserId: input.actorUserId,
+        eventKind: input.eventKind,
+        metadata: { ...metadata },
+      },
+      select: { id: true },
+    });
+    const id = event.id;
     if (!id) throw new SecurityAuditWriteError();
     return id;
   } catch {
